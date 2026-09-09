@@ -3,7 +3,7 @@ set -eu
 
 . "$(dirname "$0")/common.sh"
 
-for tool in curl file git sha256sum tar; do
+for tool in curl file git sha256sum; do
     need "$tool"
 done
 
@@ -38,13 +38,5 @@ while read -r name expected source; do
     require_hash "$target" "$expected"
 done
 
-busybox_apk="$INPUTS/downloads/busybox-static.apk"
-busybox="$INPUTS/busybox"
-fetch "$BUSYBOX_APK_URL" "$busybox_apk" "$BUSYBOX_APK_SHA256"
-tar -xOzf "$busybox_apk" bin/busybox.static > "$busybox.part"
-chmod 0755 "$busybox.part"
-mv "$busybox.part" "$busybox"
-require_hash "$busybox" "$BUSYBOX_SHA256"
-require_static_aarch64 "BusyBox" "$busybox"
 
 printf '%s\n' "prepared pinned EchoLocal inputs in $INPUTS"

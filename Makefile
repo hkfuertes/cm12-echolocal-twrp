@@ -2,7 +2,6 @@
 
 prepare:
 	./scripts/fetch-inputs.sh
-	./scripts/build-ca-bundle.sh
 
 package: prepare
 	./scripts/build-zip.sh
@@ -12,7 +11,7 @@ verify: package
 
 test: package
 	./scripts/verify-zip.sh
-	./tests/test-wrapper.sh
+	./tests/test-repair.sh
 	./tests/test-zip.sh
 
 clean:

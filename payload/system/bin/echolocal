@@ -6,6 +6,8 @@ SYSTEM=${ECHOLOCAL_SYSTEM:-/system}
 STATE=${ECHOLOCAL_STATE:-/data/misc/echolocal}
 BB="$SYSTEM/xbin/busybox"
 KEY="$STATE/psk"
+MODELS="$STATE/models"
+SEED="$SYSTEM/etc/echolocal/models"
 WPA_CLI="$SYSTEM/bin/wpa_cli"
 WPA_SOCKETS=${ECHOLOCAL_WIFI_SOCKETS:-/data/misc/wifi/sockets}
 
@@ -14,7 +16,7 @@ fail() {
     exit 1
 }
 
-[ -x "$BB" ] || fail "missing packaged BusyBox"
+[ -x "$BB" ] || fail "missing base BusyBox"
 
 require_root() {
     case "$("$BB" id)" in
@@ -60,6 +62,35 @@ key_rotate() {
     "$SYSTEM/bin/setprop" ctl.restart ledcontroller
     printf '%s\n' 'Update Home Assistant with this new key:' >&2
     key_show
+}
+
+seed_model() {
+    model=$1
+    for extension in json tflite; do
+        source="$SEED/$model.$extension"
+        destination="$MODELS/$model.$extension"
+        [ -f "$source" ] || fail "missing seeded model: $source"
+        if [ ! -f "$destination" ]; then
+            "$BB" cp "$source" "$destination"
+            "$BB" chown root:system "$destination"
+            "$BB" chmod 0644 "$destination"
+        fi
+    done
+}
+
+repair() {
+    had_key=0
+    [ -s "$KEY" ] && had_key=1
+    key_ensure
+    "$BB" mkdir -p "$MODELS"
+    "$BB" chown root:system "$MODELS"
+    "$BB" chmod 0770 "$MODELS"
+    for model in okay_nabu hey_jarvis hey_mycroft; do
+        seed_model "$model"
+    done
+    "$SYSTEM/bin/setprop" ctl.restart ledcontroller
+    [ "$had_key" -eq 1 ] ||
+        printf '%s\n' 'A new ESPHome key was generated; run `echolocal key show` before pairing again.' >&2
 }
 
 wifi_cli() {
@@ -200,6 +231,7 @@ wifi_connect() {
 usage() {
     cat >&2 <<'EOF'
 Usage:
+  echolocal repair
   echolocal key show|rotate
   echolocal wifi status
   echolocal wifi connect <ssid>
@@ -210,6 +242,10 @@ EOF
 
 require_root
 case "${1:-}" in
+    repair)
+        [ "$#" -eq 1 ] || usage
+        repair
+        ;;
     key)
         case "${2:-}" in
             ensure) key_ensure ;;

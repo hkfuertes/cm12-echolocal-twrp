@@ -10,7 +10,13 @@ SHA256SUM=${SHA256SUM:-sha256sum}
 
 SERVICE="$SYSTEM/bin/ledcontroller"
 BACKUP="$SERVICE.orig"
+ECHOD="$SYSTEM/app/echod/echod"
+START_ANIMATION="$SYSTEM/bin/start_animation.sh"
+STOP_ANIMATION="$SYSTEM/bin/stop_animation.sh"
+START_BACKUP="$START_ANIMATION.orig"
+STOP_BACKUP="$STOP_ANIMATION.orig"
 MARKER="$SYSTEM/etc/echolocal/.biscuit-addon"
+HOOK_MODE=
 
 ui_print() {
     if [ -n "$OUTFD" ] && [ -e "/proc/self/fd/$OUTFD" ]; then
@@ -27,6 +33,22 @@ die() {
 
 hash_file() {
     "$SHA256SUM" "$1" | awk '{print $1}'
+}
+
+require_regular() {
+    [ -f "$1" ] && [ ! -L "$1" ] || die "expected regular file: $1"
+}
+
+require_link_target() {
+    link=$1
+    expected=$2
+    [ -L "$link" ] || die "expected symlink: $link"
+    target=$(readlink "$link" 2>/dev/null || true)
+    [ "$target" = "$expected" ] || die "unexpected symlink target for $link: ${target:-unknown}"
+}
+
+path_absent() {
+    [ ! -e "$1" ] && [ ! -L "$1" ]
 }
 
 read_prop() {
@@ -51,34 +73,74 @@ ensure_system() {
     mount /system >/dev/null 2>&1 || die 'could not mount /system'
 }
 
+restore_file() {
+    active=$1
+    backup=$2
+    temporary=$3
+    label=$4
+    [ ! -e "$temporary" ] && [ ! -L "$temporary" ] || die "temporary $label path already exists"
+    mv "$active" "$temporary" || die "could not move add-on $label aside"
+    if ! mv "$backup" "$active"; then
+        mv "$temporary" "$active" 2>/dev/null || true
+        die "could not restore $label"
+    fi
+    rm -f "$temporary"
+}
+
+remove_unmanaged_hook() {
+    hook=$1
+    if path_absent "$hook"; then
+        return 0
+    fi
+    [ ! -L "$hook" ] || die "refusing symlink hook: $hook"
+    require_regular "$hook"
+    if grep -Fq '# Installed by EchoLocal' "$hook"; then
+        rm -f "$hook"
+    else
+        ui_print "W: leaving unrecognized animation hook: $hook"
+    fi
+}
+
 ensure_system
 [ -f "$MARKER" ] && [ ! -L "$MARKER" ] || die 'add-on marker is missing; refusing to uninstall'
 product=$(read_prop ro.product.device)
 [ -n "$product" ] || product=$(read_prop ro.build.product)
 [ "$product" = biscuit ] || die "this ZIP is only for Biscuit (got ${product:-unknown})"
-[ -f "$BACKUP" ] && [ ! -L "$BACKUP" ] || die 'preserved generic ledcontroller is missing'
+require_regular "$BACKUP"
+[ "$(hash_file "$BACKUP")" = "$BASE_LEDCONTROLLER_SHA256" ] ||
+    die 'preserved generic ledcontroller does not match the supported base'
 grep -qx "name=$ADDON_NAME" "$MARKER" || die 'unknown EchoLocal add-on marker'
 grep -qx "base_ledcontroller_sha256=$BASE_LEDCONTROLLER_SHA256" "$MARKER" ||
     die 'add-on marker does not match the supported generic base'
-[ "$(hash_file "$BACKUP")" = "$BASE_LEDCONTROLLER_SHA256" ] ||
-    die 'preserved generic ledcontroller does not match the supported base'
-[ -f "$SERVICE" ] && [ ! -L "$SERVICE" ] || die 'ledcontroller is not the expected wrapper'
-
-removing="$SERVICE.addon-removing"
-[ ! -e "$removing" ] && [ ! -L "$removing" ] || die 'temporary restore path already exists'
-mv "$SERVICE" "$removing" || die 'could not move the add-on wrapper aside'
-if ! mv "$BACKUP" "$SERVICE"; then
-    mv "$removing" "$SERVICE" 2>/dev/null || true
-    die 'could not restore the generic ledcontroller'
+require_link_target "$SERVICE" "$ECHOD"
+if grep -qx 'animation_hooks=managed' "$MARKER"; then
+    HOOK_MODE=managed
+    require_regular "$START_ANIMATION"
+    require_regular "$STOP_ANIMATION"
+    require_regular "$START_BACKUP"
+    require_regular "$STOP_BACKUP"
+elif grep -qx 'animation_hooks=absent' "$MARKER"; then
+    HOOK_MODE=absent
+    path_absent "$START_BACKUP" || die 'unexpected start_animation.sh backup'
+    path_absent "$STOP_BACKUP" || die 'unexpected stop_animation.sh backup'
+else
+    die 'add-on marker lacks animation-hook ownership'
 fi
-rm -f "$removing" \
-    "$SYSTEM/bin/echolocal" \
-    "$SYSTEM/xbin/busybox" \
-    "$SYSTEM/app/echod/echod" \
-    "$SYSTEM/app/echod/echod.prev" \
-    "$SYSTEM/app/echod/echod.old" \
-    "$MARKER" \
-    "$SYSTEM/etc/ssl/certs/ca-certificates.crt"
+
+restore_file "$SERVICE" "$BACKUP" "$SERVICE.addon-removing" 'ledcontroller'
+if [ "$HOOK_MODE" = managed ]; then
+    restore_file "$START_ANIMATION" "$START_BACKUP" "$START_ANIMATION.addon-removing" 'start_animation.sh'
+    restore_file "$STOP_ANIMATION" "$STOP_BACKUP" "$STOP_ANIMATION.addon-removing" 'stop_animation.sh'
+else
+    remove_unmanaged_hook "$START_ANIMATION"
+    remove_unmanaged_hook "$STOP_ANIMATION"
+fi
+
+rm -f "$SYSTEM/bin/echolocal" \
+    "$ECHOD" \
+    "$ECHOD.prev" \
+    "$ECHOD.old" \
+    "$MARKER"
 for model in okay_nabu hey_jarvis hey_mycroft; do
     rm -f "$SYSTEM/etc/echolocal/models/$model.json" \
         "$SYSTEM/etc/echolocal/models/$model.tflite"

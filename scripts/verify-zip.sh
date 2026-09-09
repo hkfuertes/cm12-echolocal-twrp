@@ -48,17 +48,18 @@ unzip -q "$uninstall_zip" -d "$tmp/uninstall"
 
 [ -z "$(find "$tmp/install" -type l -print)" ] || fail 'installer ZIP contains a symlink'
 [ -z "$(find "$tmp/uninstall" -type l -print)" ] || fail 'uninstaller ZIP contains a symlink'
+[ ! -e "$tmp/install/payload/system/etc/ssl/certs/ca-certificates.crt" ] ||
+    fail 'installer must not package the base CA bundle'
 (
     cd "$tmp/install"
     sha256sum -c payload-manifest.sha256 >/dev/null
 ) || fail 'payload manifest does not verify'
 
 for relative in \
-    system/bin/ledcontroller \
     system/bin/echolocal \
-    system/xbin/busybox \
+    system/bin/start_animation.sh \
+    system/bin/stop_animation.sh \
     system/app/echod/echod \
-    system/etc/ssl/certs/ca-certificates.crt \
     system/etc/echolocal/.biscuit-addon \
     system/etc/echolocal/models/okay_nabu.json \
     system/etc/echolocal/models/okay_nabu.tflite \
@@ -69,19 +70,27 @@ for relative in \
     [ -f "$tmp/install/payload/$relative" ] && [ ! -L "$tmp/install/payload/$relative" ] ||
         fail "missing regular payload file: $relative"
 done
-for relative in system/bin/ledcontroller system/bin/echolocal system/xbin/busybox system/app/echod/echod; do
+for relative in system/bin/echolocal system/bin/start_animation.sh system/bin/stop_animation.sh \
+    system/app/echod/echod; do
     mode_is "$tmp/install/payload/$relative" 755
 done
-for relative in system/etc/ssl/certs/ca-certificates.crt system/etc/echolocal/.biscuit-addon \
+for relative in system/etc/echolocal/.biscuit-addon \
     system/etc/echolocal/models/okay_nabu.json system/etc/echolocal/models/okay_nabu.tflite \
     system/etc/echolocal/models/hey_jarvis.json system/etc/echolocal/models/hey_jarvis.tflite \
     system/etc/echolocal/models/hey_mycroft.json system/etc/echolocal/models/hey_mycroft.tflite; do
     mode_is "$tmp/install/payload/$relative" 644
 done
-file "$tmp/install/payload/system/xbin/busybox" |
-    grep -Eq 'ELF 64-bit.*ARM aarch64.*statically linked' || fail 'packaged BusyBox is wrong'
 file "$tmp/install/payload/system/app/echod/echod" |
     grep -Eq 'ELF 64-bit.*ARM aarch64.*statically linked' || fail 'packaged echod is wrong'
+sh -n "$tmp/install/payload/system/bin/echolocal"
+sh -n "$tmp/install/payload/system/bin/start_animation.sh"
+sh -n "$tmp/install/payload/system/bin/stop_animation.sh"
+grep -Fq 'echod.prev' "$tmp/install/payload/system/bin/start_animation.sh" ||
+    fail 'start animation hook lacks rollback'
+grep -Fq 'exit 0' "$tmp/install/payload/system/bin/stop_animation.sh" ||
+    fail 'stop animation hook is not a stub'
+grep -Fq 'repair)' "$tmp/install/payload/system/bin/echolocal" ||
+    fail 'helper lacks repair command'
 grep -qx "name=$ADDON_NAME" "$tmp/install/payload/system/etc/echolocal/.biscuit-addon" ||
     fail 'wrong add-on marker'
 grep -qx "base_ledcontroller_sha256=$BASE_LEDCONTROLLER_SHA256" \
@@ -95,9 +104,13 @@ sh -n "$install_binary"
 sh -n "$uninstall_binary"
 forbidden_operations "$install_binary"
 forbidden_operations "$uninstall_binary"
-grep -Fq 'u:object_r:system_file:s0' "$install_binary" ||
-    fail 'installer does not label payload files'
+grep -Fq -- '--reference="$BACKUP"' "$install_binary" ||
+    fail 'installer does not attempt labels from the preserved fallback'
 grep -Fq 'BACKUP="$SERVICE.orig"' "$install_binary" || fail 'installer does not preserve fallback'
+grep -Fq 'ln -s "$ECHOD"' "$install_binary" || fail 'installer does not create service symlink'
+grep -Fq 'START_BACKUP="$START_ANIMATION.orig"' "$install_binary" ||
+    fail 'installer does not preserve animation hooks'
+grep -Fq 'expected symlink' "$uninstall_binary" || fail 'uninstaller does not require service symlink'
 grep -Fq 'persistent state was preserved' "$uninstall_binary" ||
     fail 'uninstaller does not document state preservation'
 

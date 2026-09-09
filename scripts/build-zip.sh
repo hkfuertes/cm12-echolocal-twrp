@@ -9,9 +9,6 @@ done
 
 require_hash "$INPUTS/echod" "$ECHOD_SHA256"
 require_static_aarch64 "echod" "$INPUTS/echod"
-require_hash "$INPUTS/busybox" "$BUSYBOX_SHA256"
-require_static_aarch64 "BusyBox" "$INPUTS/busybox"
-require_hash "$INPUTS/ca-certificates.crt" "$AOSP_CA_BUNDLE_SHA256"
 printf '%s\n' "$ECHOLOCAL_MODELS" |
 while read -r name expected source; do
     [ -n "$name" ] || continue
@@ -22,18 +19,15 @@ stage="$WORK/stage"
 uninstall_stage="$WORK/uninstall-stage"
 rm -rf "$stage" "$uninstall_stage"
 mkdir -p "$stage/payload/system/bin" \
-    "$stage/payload/system/xbin" \
     "$stage/payload/system/app/echod" \
     "$stage/payload/system/etc/echolocal/models" \
-    "$stage/payload/system/etc/ssl/certs" \
     "$stage/META-INF/com/google/android" \
     "$uninstall_stage/META-INF/com/google/android"
 
-cp "$ROOT/payload/system/bin/ledcontroller" "$stage/payload/system/bin/ledcontroller"
 cp "$ROOT/payload/system/bin/echolocal" "$stage/payload/system/bin/echolocal"
-cp "$INPUTS/busybox" "$stage/payload/system/xbin/busybox"
+cp "$ROOT/payload/system/bin/start_animation.sh" "$stage/payload/system/bin/start_animation.sh"
+cp "$ROOT/payload/system/bin/stop_animation.sh" "$stage/payload/system/bin/stop_animation.sh"
 cp "$INPUTS/echod" "$stage/payload/system/app/echod/echod"
-cp "$INPUTS/ca-certificates.crt" "$stage/payload/system/etc/ssl/certs/ca-certificates.crt"
 printf 'name=%s\nversion=%s\nbase_ledcontroller_sha256=%s\n' \
     "$ADDON_NAME" "$ECHOLOCAL_VERSION" "$BASE_LEDCONTROLLER_SHA256" \
     > "$stage/payload/system/etc/echolocal/.biscuit-addon"
@@ -45,9 +39,9 @@ done
 
 find "$stage" -type d -exec chmod 0755 {} \;
 find "$stage/payload" -type f -exec chmod 0644 {} \;
-chmod 0755 "$stage/payload/system/bin/ledcontroller" \
-    "$stage/payload/system/bin/echolocal" \
-    "$stage/payload/system/xbin/busybox" \
+chmod 0755 "$stage/payload/system/bin/echolocal" \
+    "$stage/payload/system/bin/start_animation.sh" \
+    "$stage/payload/system/bin/stop_animation.sh" \
     "$stage/payload/system/app/echod/echod"
 (
     cd "$stage"

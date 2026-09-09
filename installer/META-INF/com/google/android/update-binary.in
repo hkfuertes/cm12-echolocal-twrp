@@ -15,13 +15,23 @@ GETPROP=${GETPROP:-getprop}
 SHA256SUM=${SHA256SUM:-sha256sum}
 UNZIP=${UNZIP:-unzip}
 CHCON=${CHCON:-chcon}
-STAT=${STAT:-stat}
+DF=${DF:-df}
 
 SERVICE="$SYSTEM/bin/ledcontroller"
 BACKUP="$SERVICE.orig"
+ECHOD="$SYSTEM/app/echod/echod"
+BASE_BUSYBOX="$SYSTEM/xbin/busybox"
+START_ANIMATION="$SYSTEM/bin/start_animation.sh"
+STOP_ANIMATION="$SYSTEM/bin/stop_animation.sh"
+START_BACKUP="$START_ANIMATION.orig"
+STOP_BACKUP="$STOP_ANIMATION.orig"
 MARKER="$SYSTEM/etc/echolocal/.biscuit-addon"
 STAGE=
 FIRST_INSTALL=0
+SERVICE_BACKED_UP=0
+START_BACKED_UP=0
+STOP_BACKED_UP=0
+HOOK_MODE=
 CREATED_DIRS=
 
 ui_print() {
@@ -49,9 +59,16 @@ require_regular() {
     [ -f "$1" ] && [ ! -L "$1" ] || die "expected regular file: $1"
 }
 
-require_mode() {
-    actual=$("$STAT" -c '%a' "$1" 2>/dev/null || true)
-    [ "$actual" = "$2" ] || die "wrong mode on $1: expected $2, got ${actual:-unknown}"
+require_link_target() {
+    link=$1
+    expected=$2
+    [ -L "$link" ] || die "expected symlink: $link"
+    target=$(readlink "$link" 2>/dev/null || true)
+    [ "$target" = "$expected" ] || die "unexpected symlink target for $link: ${target:-unknown}"
+}
+
+path_absent() {
+    [ ! -e "$1" ] && [ ! -L "$1" ]
 }
 
 read_prop() {
@@ -76,12 +93,18 @@ ensure_system() {
     mount /system >/dev/null 2>&1 || die 'could not mount /system'
 }
 
+label_system_file() {
+    # ponytail: TWRP 3.2.3 rejects chcon here; make this fatal if a supported recovery needs relabeling.
+    "$CHCON" --reference="$BACKUP" "$1" >/dev/null 2>&1 || true
+}
+
 free_kb() {
     if [ "${ECHOLOCAL_FREE_KB+x}" = x ]; then
         printf '%s\n' "$ECHOLOCAL_FREE_KB"
         return 0
     fi
-    df -k "$SYSTEM" | awk 'NR == 2 { print $4; exit }'
+    "$DF" -k "$SYSTEM" |
+        awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+%$/ && $(i - 1) ~ /^[0-9]+$/) { print $(i - 1); exit } }'
 }
 
 ensure_dir() {
@@ -92,7 +115,7 @@ ensure_dir() {
         CREATED_DIRS="$directory $CREATED_DIRS"
     fi
     chmod 0755 "$directory" || die "could not set mode on $directory"
-    "$CHCON" u:object_r:system_file:s0 "$directory" || die "could not label $directory"
+    label_system_file "$directory"
 }
 
 install_file() {
@@ -105,18 +128,35 @@ install_file() {
     source_hash=$(hash_file "$source")
     cp "$source" "$destination" || die "could not install $destination"
     chmod "$mode" "$destination" || die "could not set mode on $destination"
-    "$CHCON" u:object_r:system_file:s0 "$destination" || die "could not label $destination"
-    require_mode "$destination" "$mode"
+    label_system_file "$destination"
     [ "$(hash_file "$destination")" = "$source_hash" ] || die "installed hash mismatch: $destination"
+}
+
+install_marker() {
+    install_file etc/echolocal/.biscuit-addon 644
+    printf 'animation_hooks=%s\n' "$HOOK_MODE" >> "$MARKER" || die 'could not write add-on marker'
+}
+
+install_service_link() {
+    temporary="$SERVICE.echolocal-new"
+    [ ! -e "$temporary" ] && [ ! -L "$temporary" ] || die "temporary service path already exists"
+    ln -s "$ECHOD" "$temporary" || die 'could not create ledcontroller symlink'
+    mv -f "$temporary" "$SERVICE" || {
+        rm -f "$temporary"
+        die 'could not activate ledcontroller symlink'
+    }
+    require_link_target "$SERVICE" "$ECHOD"
 }
 
 remove_new_payload() {
     rm -f "$SERVICE" \
         "$SYSTEM/bin/echolocal" \
-        "$SYSTEM/xbin/busybox" \
-        "$SYSTEM/app/echod/echod" \
-        "$SYSTEM/etc/echolocal/.biscuit-addon" \
-        "$SYSTEM/etc/ssl/certs/ca-certificates.crt" 2>/dev/null || true
+        "$ECHOD" \
+        "$MARKER" 2>/dev/null || true
+    if [ "$HOOK_MODE" = managed ]; then
+        [ "$START_BACKED_UP" -eq 0 ] || rm -f "$START_ANIMATION" 2>/dev/null || true
+        [ "$STOP_BACKED_UP" -eq 0 ] || rm -f "$STOP_ANIMATION" 2>/dev/null || true
+    fi
     for model in okay_nabu hey_jarvis hey_mycroft; do
         rm -f "$SYSTEM/etc/echolocal/models/$model.json" \
             "$SYSTEM/etc/echolocal/models/$model.tflite" 2>/dev/null || true
@@ -131,14 +171,16 @@ finish() {
     trap - EXIT HUP INT TERM
     if [ "$status" -ne 0 ] && [ "$FIRST_INSTALL" -eq 1 ]; then
         remove_new_payload
-        [ ! -f "$BACKUP" ] || mv "$BACKUP" "$SERVICE" 2>/dev/null || true
+        [ "$STOP_BACKED_UP" -eq 0 ] || mv "$STOP_BACKUP" "$STOP_ANIMATION" 2>/dev/null || true
+        [ "$START_BACKED_UP" -eq 0 ] || mv "$START_BACKUP" "$START_ANIMATION" 2>/dev/null || true
+        [ "$SERVICE_BACKED_UP" -eq 0 ] || mv "$BACKUP" "$SERVICE" 2>/dev/null || true
     fi
     [ -z "$STAGE" ] || rm -rf "$STAGE"
     exit "$status"
 }
 trap finish EXIT HUP INT TERM
 
-for tool in "$GETPROP" "$SHA256SUM" "$UNZIP" "$CHCON" "$STAT" awk cp chmod df find grep mkdir mount mv rm sed sha256sum; do
+for tool in "$GETPROP" "$SHA256SUM" "$UNZIP" "$CHCON" "$DF" awk cp chmod find grep head ln mkdir mount mv readlink rm sed sha256sum; do
     need_tool "$tool"
 done
 
@@ -147,6 +189,8 @@ product=$(read_prop ro.product.device)
 [ -n "$product" ] || product=$(read_prop ro.build.product)
 [ "$product" = biscuit ] || die "this ZIP is only for Biscuit (got ${product:-unknown})"
 ensure_system
+require_regular "$BASE_BUSYBOX"
+[ -x "$BASE_BUSYBOX" ] || die "base BusyBox is not executable: $BASE_BUSYBOX"
 
 if [ -f "$MARKER" ]; then
     require_regular "$MARKER"
@@ -156,17 +200,41 @@ if [ -f "$MARKER" ]; then
     require_regular "$BACKUP"
     [ "$(hash_file "$BACKUP")" = "$BASE_LEDCONTROLLER_SHA256" ] ||
         die 'preserved generic ledcontroller does not match the supported base'
-    require_regular "$SERVICE"
-    [ ! -e "$SYSTEM/app/echod/echod.prev" ] ||
-        die 'echod.prev is pending rollback; boot once before upgrading'
+    require_link_target "$SERVICE" "$ECHOD"
+    if grep -qx 'animation_hooks=managed' "$MARKER"; then
+        HOOK_MODE=managed
+        require_regular "$START_ANIMATION"
+        require_regular "$STOP_ANIMATION"
+        require_regular "$START_BACKUP"
+        require_regular "$STOP_BACKUP"
+    elif grep -qx 'animation_hooks=absent' "$MARKER"; then
+        HOOK_MODE=absent
+        path_absent "$START_BACKUP" || die 'unexpected start_animation.sh backup'
+        path_absent "$STOP_BACKUP" || die 'unexpected stop_animation.sh backup'
+        for path in "$START_ANIMATION" "$STOP_ANIMATION"; do
+            [ ! -L "$path" ] || die "refusing symlink hook: $path"
+            [ ! -e "$path" ] || require_regular "$path"
+        done
+    else
+        die 'add-on marker lacks animation-hook ownership'
+    fi
+    [ ! -e "$ECHOD.prev" ] || die 'echod.prev is pending rollback; boot once before upgrading'
 else
     require_regular "$SERVICE"
     [ "$(hash_file "$SERVICE")" = "$BASE_LEDCONTROLLER_SHA256" ] ||
         die 'unsupported generic base: ledcontroller hash does not match'
-    for path in "$BACKUP" "$SYSTEM/bin/echolocal" "$SYSTEM/xbin/busybox" \
-        "$SYSTEM/app/echod" "$SYSTEM/etc/echolocal" \
-        "$SYSTEM/etc/ssl/certs/ca-certificates.crt"; do
-        [ ! -e "$path" ] && [ ! -L "$path" ] || die "refusing to overwrite existing path: $path"
+    if [ -f "$START_ANIMATION" ] && [ ! -L "$START_ANIMATION" ] && \
+        [ -f "$STOP_ANIMATION" ] && [ ! -L "$STOP_ANIMATION" ]; then
+        HOOK_MODE=managed
+    elif path_absent "$START_ANIMATION" && path_absent "$STOP_ANIMATION"; then
+        HOOK_MODE=absent
+    else
+        die 'animation hooks are partially present or symlinked'
+    fi
+    for path in "$BACKUP" "$START_BACKUP" "$STOP_BACKUP" \
+        "$SYSTEM/bin/echolocal" "$SYSTEM/app/echod" \
+        "$SYSTEM/etc/echolocal"; do
+        path_absent "$path" || die "refusing to overwrite existing path: $path"
     done
 fi
 
@@ -191,11 +259,10 @@ require_regular "$STAGE/payload-manifest.sha256"
 [ -z "$(find "$STAGE/payload" -type l -print)" ] || die 'payload contains an unexpected symlink'
 
 for relative in \
-    system/bin/ledcontroller \
     system/bin/echolocal \
-    system/xbin/busybox \
+    system/bin/start_animation.sh \
+    system/bin/stop_animation.sh \
     system/app/echod/echod \
-    system/etc/ssl/certs/ca-certificates.crt \
     system/etc/echolocal/.biscuit-addon \
     system/etc/echolocal/models/okay_nabu.json \
     system/etc/echolocal/models/okay_nabu.tflite \
@@ -205,41 +272,38 @@ for relative in \
     system/etc/echolocal/models/hey_mycroft.tflite; do
     require_regular "$STAGE/payload/$relative"
 done
-for relative in system/bin/ledcontroller system/bin/echolocal system/xbin/busybox system/app/echod/echod; do
-    require_mode "$STAGE/payload/$relative" 755
-done
-for relative in system/etc/ssl/certs/ca-certificates.crt system/etc/echolocal/.biscuit-addon \
-    system/etc/echolocal/models/okay_nabu.json system/etc/echolocal/models/okay_nabu.tflite \
-    system/etc/echolocal/models/hey_jarvis.json system/etc/echolocal/models/hey_jarvis.tflite \
-    system/etc/echolocal/models/hey_mycroft.json system/etc/echolocal/models/hey_mycroft.tflite; do
-    require_mode "$STAGE/payload/$relative" 644
-done
 grep -qx "name=$ADDON_NAME" "$STAGE/payload/system/etc/echolocal/.biscuit-addon" ||
     die 'payload marker has the wrong name'
 grep -qx "base_ledcontroller_sha256=$BASE_LEDCONTROLLER_SHA256" \
     "$STAGE/payload/system/etc/echolocal/.biscuit-addon" || die 'payload marker has the wrong base'
 
 if [ ! -f "$MARKER" ]; then
-    mv "$SERVICE" "$BACKUP" || die 'could not preserve the generic ledcontroller'
     FIRST_INSTALL=1
+    mv "$SERVICE" "$BACKUP" || die 'could not preserve the generic ledcontroller'
+    SERVICE_BACKED_UP=1
+    if [ "$HOOK_MODE" = managed ]; then
+        mv "$START_ANIMATION" "$START_BACKUP" || die 'could not preserve start_animation.sh'
+        START_BACKED_UP=1
+        mv "$STOP_ANIMATION" "$STOP_BACKUP" || die 'could not preserve stop_animation.sh'
+        STOP_BACKED_UP=1
+    fi
 fi
 
-ensure_dir "$SYSTEM/xbin"
 ensure_dir "$SYSTEM/app/echod"
 ensure_dir "$SYSTEM/etc/echolocal"
 ensure_dir "$SYSTEM/etc/echolocal/models"
-ensure_dir "$SYSTEM/etc/ssl"
-ensure_dir "$SYSTEM/etc/ssl/certs"
 
 install_file bin/echolocal 755
-install_file xbin/busybox 755
 install_file app/echod/echod 755
-install_file etc/ssl/certs/ca-certificates.crt 644
+if [ "$HOOK_MODE" = managed ]; then
+    install_file bin/start_animation.sh 755
+    install_file bin/stop_animation.sh 755
+fi
 for model in okay_nabu hey_jarvis hey_mycroft; do
     install_file "etc/echolocal/models/$model.json" 644
     install_file "etc/echolocal/models/$model.tflite" 644
 done
-install_file bin/ledcontroller 755
-install_file etc/echolocal/.biscuit-addon 644
+install_service_link
+install_marker
 
-ui_print "$ADDON_NAME $VERSION installed; runtime state self-heals under /data/misc/echolocal"
+ui_print "$ADDON_NAME $VERSION installed; run echolocal repair after a /data wipe"
