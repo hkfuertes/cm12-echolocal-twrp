@@ -21,6 +21,12 @@ It deliberately does **not** modify boot, ramdisk, recovery, cache, persist,
 or partition tables. A full system OTA removes this add-on; reflash the install
 ZIP afterwards.
 
+## Base requirements
+
+- `/system/xbin/busybox` must be a regular executable supplied by `cm12-minimal`.
+- CM12 owns the TLS trust roots. This ZIP never packages, overwrites, or
+  removes certificates.
+
 ## Build
 
 ```sh
@@ -29,8 +35,8 @@ make verify
 make test
 ```
 
-Generated downloads, source checkouts, CA material, staging trees, and ZIPs
-stay under ignored `work/` and `out/`. Inputs and their hashes live in
+Generated downloads, source checkouts, staging trees, and ZIPs stay under
+ignored `work/` and `out/`. Inputs and their hashes live in
 [`scripts/versions.sh`](scripts/versions.sh); credentials never enter the
 repository or ZIP.
 
