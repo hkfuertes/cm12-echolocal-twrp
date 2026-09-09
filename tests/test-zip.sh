@@ -34,15 +34,19 @@ cat > "$tmp/bin/chcon-fails" <<'EOF'
 #!/bin/sh
 exit 1
 EOF
-chmod 0755 "$tmp/bin/getprop" "$tmp/bin/chcon" "$tmp/bin/df" "$tmp/bin/chcon-fails"
+cat > "$tmp/bin/chown" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod 0755 "$tmp/bin/getprop" "$tmp/bin/chcon" "$tmp/bin/df" "$tmp/bin/chcon-fails" "$tmp/bin/chown"
 unzip -q "$INSTALL_ZIP" -d "$tmp/install"
 unzip -q "$UNINSTALL_ZIP" -d "$tmp/uninstall"
 install_binary="$tmp/install/META-INF/com/google/android/update-binary"
 uninstall_binary="$tmp/uninstall/META-INF/com/google/android/update-binary"
 
 setup_system() {
-    rm -rf "$1"
-    mkdir -p "$1/bin" "$1/xbin" "$1/etc/ssl/certs"
+    rm -rf "$1" "$1-data"
+    mkdir -p "$1/bin" "$1/xbin" "$1/etc/ssl/certs" "$1-data/misc"
     cp "$FIXTURE" "$1/bin/ledcontroller"
     printf '%s\n' '#!/bin/sh' 'exit 0' > "$1/xbin/busybox"
     printf '%s\n' 'base CA bundle' > "$1/etc/ssl/certs/ca-certificates.crt"
@@ -61,20 +65,20 @@ setup_system() {
 
 run_update() {
     TEST_PRODUCT="$4" \
-        ECHOLOCAL_SYSTEM="$3" ECHOLOCAL_TMPDIR="$tmp/recovery" \
-        ECHOLOCAL_FREE_KB="$5" GETPROP="$tmp/bin/getprop" CHCON="$tmp/bin/chcon" \
+        ECHOLOCAL_SYSTEM="$3" ECHOLOCAL_STATE="$3-data/misc/echolocal" ECHOLOCAL_TMPDIR="$tmp/recovery" \
+        ECHOLOCAL_FREE_KB="$5" GETPROP="$tmp/bin/getprop" CHCON="$tmp/bin/chcon" CHOWN="$tmp/bin/chown" \
         sh "$1" 3 1 "$2" >/dev/null
 }
 
 run_update_folded_df() {
-    TEST_PRODUCT=biscuit ECHOLOCAL_SYSTEM="$2" ECHOLOCAL_TMPDIR="$tmp/recovery" \
-        GETPROP="$tmp/bin/getprop" CHCON="$tmp/bin/chcon" DF="$tmp/bin/df" \
+    TEST_PRODUCT=biscuit ECHOLOCAL_SYSTEM="$2" ECHOLOCAL_STATE="$2-data/misc/echolocal" ECHOLOCAL_TMPDIR="$tmp/recovery" \
+        GETPROP="$tmp/bin/getprop" CHCON="$tmp/bin/chcon" CHOWN="$tmp/bin/chown" DF="$tmp/bin/df" \
         sh "$1" 3 1 "$INSTALL_ZIP" >/dev/null
 }
 
 run_update_label_failure() {
-    TEST_PRODUCT=biscuit ECHOLOCAL_SYSTEM="$2" ECHOLOCAL_TMPDIR="$tmp/recovery" \
-        ECHOLOCAL_FREE_KB=999999 GETPROP="$tmp/bin/getprop" CHCON="$tmp/bin/chcon-fails" \
+    TEST_PRODUCT=biscuit ECHOLOCAL_SYSTEM="$2" ECHOLOCAL_STATE="$2-data/misc/echolocal" ECHOLOCAL_TMPDIR="$tmp/recovery" \
+        ECHOLOCAL_FREE_KB=999999 GETPROP="$tmp/bin/getprop" CHCON="$tmp/bin/chcon-fails" CHOWN="$tmp/bin/chown" \
         sh "$1" 3 1 "$INSTALL_ZIP" >/dev/null
 }
 
@@ -95,6 +99,15 @@ grep -qx 'animation_hooks=managed' "$system/etc/echolocal/.biscuit-addon"
 [ "$(cat "$system/bin/stop_animation.sh.orig")" = 'stock stop animation' ]
 grep -Fq 'echod.prev' "$system/bin/start_animation.sh"
 grep -Fq 'exit 0' "$system/bin/stop_animation.sh"
+state="$system-data/misc/echolocal"
+[ -s "$state/psk" ]
+[ "$(wc -c < "$state/psk")" = 45 ]
+for model in okay_nabu hey_jarvis hey_mycroft; do
+    cmp "$system/etc/echolocal/models/$model.json" "$state/models/$model.json"
+    cmp "$system/etc/echolocal/models/$model.tflite" "$state/models/$model.tflite"
+done
+key_hash=$(sha256sum "$state/psk" | awk '{print $1}')
+printf '%s\n' 'custom model' > "$state/models/okay_nabu.json"
 backup_hash=$(sha256sum "$system/bin/ledcontroller.orig" | awk '{print $1}')
 start_backup_hash=$(sha256sum "$system/bin/start_animation.sh.orig" | awk '{print $1}')
 stop_backup_hash=$(sha256sum "$system/bin/stop_animation.sh.orig" | awk '{print $1}')
@@ -104,6 +117,8 @@ run_update "$install_binary" "$INSTALL_ZIP" "$system" biscuit 999999
 [ "$(sha256sum "$system/bin/stop_animation.sh.orig" | awk '{print $1}')" = "$stop_backup_hash" ]
 [ -L "$system/bin/ledcontroller" ]
 [ "$(readlink "$system/bin/ledcontroller")" = "$system/app/echod/echod" ]
+[ "$(sha256sum "$state/psk" | awk '{print $1}')" = "$key_hash" ]
+[ "$(cat "$state/models/okay_nabu.json")" = 'custom model' ]
 
 folded_df="$tmp/folded-df"
 setup_system "$folded_df"
@@ -176,9 +191,6 @@ if run_update "$install_binary" "$bad_zip" "$bad_hash" biscuit 999999; then
     exit 1
 fi
 
-persistent="$tmp/persistent"
-mkdir -p "$persistent"
-printf 'keep\n' > "$persistent/state"
 run_update "$uninstall_binary" "$UNINSTALL_ZIP" "$system" biscuit 999999
 [ "$(sha256sum "$system/bin/ledcontroller" | awk '{print $1}')" = "$BASE_LEDCONTROLLER_SHA256" ]
 [ ! -L "$system/bin/ledcontroller" ]
@@ -192,6 +204,7 @@ run_update "$uninstall_binary" "$UNINSTALL_ZIP" "$system" biscuit 999999
 [ "$(sha256sum "$system/etc/ssl/certs/ca-certificates.crt" | awk '{print $1}')" = "$base_ca_hash" ]
 [ ! -e "$system/app/echod/echod" ]
 [ ! -e "$system/etc/echolocal/.biscuit-addon" ]
-[ "$(cat "$persistent/state")" = keep ]
+[ "$(sha256sum "$state/psk" | awk '{print $1}')" = "$key_hash" ]
+[ "$(cat "$state/models/okay_nabu.json")" = 'custom model' ]
 
-printf '%s\n' 'installer refusal, base BusyBox/CA preservation, symlink takeover, managed/absent hook, and persistent-state checks passed'
+printf '%s\n' 'installer refusal, base BusyBox/CA preservation, symlink takeover, managed/absent hook, first-install state, and persistent-state checks passed'

@@ -12,6 +12,7 @@ verify: package
 test: package
 	./scripts/verify-zip.sh
 	./tests/test-repair.sh
+	./tests/test-wifi.sh
 	./tests/test-zip.sh
 
 clean:

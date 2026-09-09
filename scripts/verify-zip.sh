@@ -108,6 +108,10 @@ grep -Fq -- '--reference="$BACKUP"' "$install_binary" ||
     fail 'installer does not attempt labels from the preserved fallback'
 grep -Fq 'BACKUP="$SERVICE.orig"' "$install_binary" || fail 'installer does not preserve fallback'
 grep -Fq 'ln -s "$ECHOD"' "$install_binary" || fail 'installer does not create service symlink'
+grep -Fq 'initialize_runtime_state' "$install_binary" ||
+    fail 'installer does not initialize first-install runtime state'
+grep -Fq 'STATE=${ECHOLOCAL_STATE:-/data/misc/echolocal}' "$install_binary" ||
+    fail 'installer does not restrict runtime state to the add-on path'
 grep -Fq 'START_BACKUP="$START_ANIMATION.orig"' "$install_binary" ||
     fail 'installer does not preserve animation hooks'
 grep -Fq 'expected symlink' "$uninstall_binary" || fail 'uninstaller does not require service symlink'

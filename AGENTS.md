@@ -27,18 +27,21 @@ framework-free Biscuit `cm12-minimal` base. Keep this project independent from
 - If the base has both animation hooks, preserve them as `.orig` and install
   EchoLocal's rollback/stub hooks; restore them on uninstall. The current
   minimal base has neither, so do not create dead hooks during installation.
-- A `/data` wipe is repaired manually with `echolocal repair`: it ensures the
-  ESPHome key, copies absent seed models, and restarts `ledcontroller`. It does
-  not restore Wi-Fi credentials; provision Wi-Fi again after a wipe.
+- The installer initializes a missing ESPHome key and missing seed models on
+  first install without overwriting runtime state. A `/data` wipe is repaired
+  manually with `echolocal repair`: it ensures the key, copies absent models,
+  and restarts `ledcontroller`. It does not restore Wi-Fi credentials; provision
+  a protected network with `echolocal wifi connect <ssid> <passphrase>`
+  (requiring base `/system/bin/wpa_passphrase`) or use `echolocal wifi open <ssid>`.
 - Keep EchoLocal's compatibility paths and the `ledcontroller` init-service
   lifecycle. Do not copy Fire OS boot flashing, package hiding, firewall hooks,
   or Wi-Fi provisioning behavior.
 
 ## Installer and uninstaller
 
-- The installer owns `/system` payload files and may initialize only
-  `/data/misc/echolocal` if that is genuinely needed. Never write Wi-Fi
-  credentials or embed an ESPHome key in a ZIP, source file, log, or fixture.
+- The installer owns `/system` payload files and initializes only missing
+  add-on-owned `/data/misc/echolocal` state. Never write Wi-Fi credentials or
+  embed an ESPHome key in a ZIP, source file, log, or fixture.
 - Preserve the original fallback once as `/system/bin/ledcontroller.orig` and
   require an add-on marker for upgrades or uninstall.
 - Attempt to label installed payload from the preserved fallback; preserve that
