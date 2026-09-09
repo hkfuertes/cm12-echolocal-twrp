@@ -60,3 +60,9 @@ generic Biscuit base. Flash the adjacent `-uninstall.zip` to restore the base
 fallback. After a `/data` wipe, run `adb root`, then `adb shell echolocal
 repair`; obtain the new key with `adb shell echolocal key show` and reconfigure
 Wi-Fi. Test on hardware before relying on it.
+
+## Credits
+
+This add-on packages and integrates [EchoLocal](https://github.com/ygelfand/echolocal)
+by [ygelfand](https://github.com/ygelfand). This repository supplies only the Biscuit
+CM12 TWRP integration.
