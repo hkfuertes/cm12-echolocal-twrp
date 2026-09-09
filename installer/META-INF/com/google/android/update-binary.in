@@ -242,4 +242,4 @@ done
 install_file bin/ledcontroller 755
 install_file etc/echolocal/.biscuit-addon 644
 
-ui_print "$ADDON_NAME $VERSION installed; /data was not modified"
+ui_print "$ADDON_NAME $VERSION installed; runtime state self-heals under /data/misc/echolocal"

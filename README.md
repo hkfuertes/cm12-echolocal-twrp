@@ -1,7 +1,7 @@
 # cm12-echolocal-twrp
 
 A reproducible, TWRP-flashable EchoLocal add-on for the framework-free Biscuit
-`cm12-minimal` base. It modifies only `/system`.
+`cm12-minimal` base. Its payload lives in `/system`; it owns runtime state under `/data/misc/echolocal`.
 
 ## What it does
 
@@ -16,9 +16,9 @@ A reproducible, TWRP-flashable EchoLocal add-on for the framework-free Biscuit
 - builds a matching uninstaller that restores the generic fallback and leaves
   `/data/misc/echolocal` intact.
 
-It deliberately does **not** modify boot, ramdisk, recovery, cache, userdata,
-persist, or partition tables. A full system OTA removes this add-on; reflash
-the install ZIP afterwards.
+It deliberately does **not** modify boot, ramdisk, recovery, cache, persist,
+or partition tables. A full system OTA removes this add-on; reflash the install
+ZIP afterwards.
 
 ## Build
 

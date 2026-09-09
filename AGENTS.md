@@ -1,0 +1,76 @@
+# AGENTS.md
+
+## Purpose
+
+Build and maintain a reproducible, TWRP-flashable EchoLocal add-on for the
+framework-free Biscuit `cm12-minimal` base. Keep this project independent from
+`../amazon_device_biscuit` and from the Fire OS-oriented EchoLocal installer.
+
+## Base contract
+
+- Support only Biscuit and the generic base whose reserved
+  `/system/bin/ledcontroller` fallback matches the approved hash in
+  `scripts/versions.sh`.
+- Generic init already starts and supervises `ledcontroller` as root after
+  `post-fs-data`. Do not change boot.img, ramdisk, recovery, GPT, cache, or
+  persist to integrate EchoLocal.
+- Fail closed on a wrong device, wrong fallback, missing marker, bad payload,
+  bad mode/context, unsafe symlink, or insufficient free space.
+
+## Runtime design
+
+- `/system/bin/ledcontroller` is a POSIX wrapper, **not** an `echod` symlink.
+  It handles a pending `/system/app/echod/echod.prev` rollback, creates the
+  owned state directories, ensures the ESPHome key, seeds absent models, then
+  `exec`s `/system/app/echod/echod`.
+- This is how a first boot and a later `/data` wipe self-heal. It does not
+  restore Wi-Fi credentials; provision Wi-Fi again after a wipe.
+- Keep EchoLocal's compatibility paths and the `ledcontroller` init-service
+  lifecycle. Do not copy Fire OS boot flashing or service takeover behavior.
+
+## Installer and uninstaller
+
+- The installer owns `/system` payload files and may initialize only
+  `/data/misc/echolocal` if that is genuinely needed. Never write Wi-Fi
+  credentials or embed an ESPHome key in a ZIP, source file, log, or fixture.
+- Preserve the original fallback once as `/system/bin/ledcontroller.orig` and
+  require an add-on marker for upgrades or uninstall.
+- Label installed payload with `u:object_r:system_file:s0`; preserve the
+  original fallback's content and label for restoration.
+- The uninstaller restores the original fallback, removes only known
+  add-on-owned `/system` files, and preserves `/data/misc/echolocal` by
+  default.
+- A full system OTA removes the add-on. Do not claim OTA survival.
+
+## Pinned inputs and repository hygiene
+
+- `scripts/versions.sh` is the source of truth for revisions and SHA-256s.
+  Verify every download before packaging: static AArch64 `echod`, model assets,
+  AOSP-generated CA bundle, BusyBox, and any future runtime tool.
+- Do not commit downloads, generated models, CA material, staging trees, or
+  ZIPs. They belong under ignored `work/` and `out/`.
+- Keep the implementation small: POSIX shell, existing host tools, and no new
+  dependency unless it is required and pinned.
+
+## Required checks
+
+Run before committing changes:
+
+```sh
+make test
+```
+
+This validates hashes, archive contents, modes, contexts, symlinks, install,
+upgrade, uninstall, first boot, rollback, and a simulated `/data` wipe.
+
+Before hardware use, perform an explicit TWRP smoke test on the supported base:
+install without wiping data; verify root ADB, `ledcontroller`, `echod`, key and
+model recovery, Wi-Fi/mDNS; test uninstall, reinstall, then a controlled data
+wipe. Use `adb devices -l` plus short explicit checks, not `adb wait-for-device`.
+
+## References
+
+- Generic base reference: `../amazon_device_biscuit/device/amazon/biscuit/`
+- Existing EchoLocal source/installer: `../echolocal/` (reference only)
+- Base PR: <https://github.com/hkfuertes/amazon_device_biscuit/pull/6>
+- Integration reference: <https://github.com/hkfuertes/amazon_device_biscuit/pull/4>

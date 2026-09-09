@@ -28,7 +28,7 @@ mode_is() {
 
 forbidden_operations() {
     script=$1
-    if grep -Eq '/(boot|recovery|userdata|cache|persist)(/|[[:space:]]|$)' "$script"; then
+    if grep -Eq '/(boot|recovery|cache|persist)(/|[[:space:]]|$)' "$script"; then
         fail "forbidden partition reference in $script"
     fi
     if grep -Eq '(^|[[:space:]])(dd|flash_image|write_raw_image|format|delete_recursive)([[:space:]]|$)' "$script"; then
