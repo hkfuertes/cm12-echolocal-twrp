@@ -42,6 +42,17 @@ adb shell echolocal wifi status
 WPA key with the base `wpa_passphrase`; a 64-character hexadecimal key is also
 accepted directly. The ZIP never contains Wi-Fi credentials.
 
+## ESPHome key
+
+```sh
+adb shell echolocal key show
+adb shell echolocal key rotate
+```
+
+`key show` prints the current ESPHome key. Treat it as a secret. `key rotate`
+generates a new key, restarts `ledcontroller`, and prints the replacement; update
+Home Assistant with it before pairing again.
+
 ## Build
 
 ```sh
