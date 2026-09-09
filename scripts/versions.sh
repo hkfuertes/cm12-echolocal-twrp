@@ -1,0 +1,28 @@
+# Pinned, independently verifiable build inputs.
+ADDON_NAME=cm12-echolocal-biscuit
+ECHOLOCAL_VERSION=0.0.6
+SOURCE_DATE_EPOCH=1700000000
+
+BASE_LEDCONTROLLER_SHA256=f7a2f96673fae0cb00836362f30d54ec15140829217c7c75b72b707af67ef0fc
+
+ECHOD_URL=https://github.com/ygelfand/echolocal/releases/download/0.0.6/echod
+ECHOD_SHA256=155a9d1330879de6f889a3990f2e82d1ecf5ddf97c7e6d1b4d85babe6f192181
+
+ECHOLOCAL_REPOSITORY=https://github.com/ygelfand/echolocal.git
+ECHOLOCAL_COMMIT=567d9440f48509457cf1c7131745e385fabf83c1
+ECHOLOCAL_MODELS='
+okay_nabu.json 6dd65604f70fe5ea9d1af73a7bf239529d1fbabc363807f45d2b22ce464ddbed internal/host/assets/models/okay_nabu.json
+okay_nabu.tflite 0689abe1912a95a3318a0d8cb2e67bad0cbcfe3e24dd6e050c75debddfb6f891 internal/host/assets/models/okay_nabu.tflite
+hey_jarvis.json b153867d818675d8abcc9dace474afe7f83551ae0d5a9b1d71a98681320185af internal/host/assets/models/hey_jarvis.json
+hey_jarvis.tflite 21a7976add39ee24ec96c63d96b7aaa18e24d1d9824b963e451da8feb4b78b77 internal/host/assets/models/hey_jarvis.tflite
+hey_mycroft.json 57b2b06fe5fdbbe834a242fabc7af31e4194a550fc382b2c88636a6d62d0d57e internal/host/assets/models/hey_mycroft.json
+hey_mycroft.tflite c2a9b6ed51182db72e014781d5a4ece1929dc232a40b5b4be384f0295f0e1571 internal/host/assets/models/hey_mycroft.tflite'
+
+AOSP_CA_REPOSITORY=https://android.googlesource.com/platform/system/ca-certificates
+AOSP_CA_COMMIT=45c7f199cb11b08f6d1ae2b75da25e53140a0c7d
+AOSP_CA_CERT_COUNT=149
+AOSP_CA_BUNDLE_SHA256=a3aa1fa1ea9b934de842d60f357bfdc76d805d7cf48a2667afe65cb105117627
+
+BUSYBOX_APK_URL=https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/busybox-static-1.36.1-r31.apk
+BUSYBOX_APK_SHA256=1d8e7a7fc2ed69bdb8eb7be9d962489c21a0f75b72d8a325437c8a09d4cfac70
+BUSYBOX_SHA256=ebd2865edcab0b590c7d0edb70d3e782cbfb541e518a390ced3a3e186509bc7f

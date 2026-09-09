@@ -1,0 +1,90 @@
+#!/sbin/sh
+set -eu
+
+OUTFD=${2:-}
+SYSTEM=${ECHOLOCAL_SYSTEM:-/system}
+ADDON_NAME=@ADDON_NAME@
+BASE_LEDCONTROLLER_SHA256=@BASE_LEDCONTROLLER_SHA256@
+GETPROP=${GETPROP:-getprop}
+SHA256SUM=${SHA256SUM:-sha256sum}
+
+SERVICE="$SYSTEM/bin/ledcontroller"
+BACKUP="$SERVICE.orig"
+MARKER="$SYSTEM/etc/echolocal/.biscuit-addon"
+
+ui_print() {
+    if [ -n "$OUTFD" ] && [ -e "/proc/self/fd/$OUTFD" ]; then
+        printf 'ui_print %s\nui_print\n' "$*" > "/proc/self/fd/$OUTFD"
+    else
+        printf '%s\n' "$*"
+    fi
+}
+
+die() {
+    ui_print "E: $*"
+    exit 1
+}
+
+hash_file() {
+    "$SHA256SUM" "$1" | awk '{print $1}'
+}
+
+read_prop() {
+    prop_name=$1
+    prop_value=$("$GETPROP" "$prop_name" 2>/dev/null || true)
+    if [ -z "$prop_value" ]; then
+        for prop_file in /default.prop "$SYSTEM/build.prop"; do
+            [ -f "$prop_file" ] || continue
+            prop_value=$(sed -n "s/^$prop_name=//p" "$prop_file" | head -n 1)
+            [ -z "$prop_value" ] || break
+        done
+    fi
+    printf '%s' "$prop_value"
+}
+
+ensure_system() {
+    [ -d "$SYSTEM" ] || die "missing system mount: $SYSTEM"
+    [ "$SYSTEM" != /system ] && return 0
+    if mount | grep -Eq '[[:space:]]/system[[:space:]]'; then
+        return 0
+    fi
+    mount /system >/dev/null 2>&1 || die 'could not mount /system'
+}
+
+ensure_system
+[ -f "$MARKER" ] && [ ! -L "$MARKER" ] || die 'add-on marker is missing; refusing to uninstall'
+product=$(read_prop ro.product.device)
+[ -n "$product" ] || product=$(read_prop ro.build.product)
+[ "$product" = biscuit ] || die "this ZIP is only for Biscuit (got ${product:-unknown})"
+[ -f "$BACKUP" ] && [ ! -L "$BACKUP" ] || die 'preserved generic ledcontroller is missing'
+grep -qx "name=$ADDON_NAME" "$MARKER" || die 'unknown EchoLocal add-on marker'
+grep -qx "base_ledcontroller_sha256=$BASE_LEDCONTROLLER_SHA256" "$MARKER" ||
+    die 'add-on marker does not match the supported generic base'
+[ "$(hash_file "$BACKUP")" = "$BASE_LEDCONTROLLER_SHA256" ] ||
+    die 'preserved generic ledcontroller does not match the supported base'
+[ -f "$SERVICE" ] && [ ! -L "$SERVICE" ] || die 'ledcontroller is not the expected wrapper'
+
+removing="$SERVICE.addon-removing"
+[ ! -e "$removing" ] && [ ! -L "$removing" ] || die 'temporary restore path already exists'
+mv "$SERVICE" "$removing" || die 'could not move the add-on wrapper aside'
+if ! mv "$BACKUP" "$SERVICE"; then
+    mv "$removing" "$SERVICE" 2>/dev/null || true
+    die 'could not restore the generic ledcontroller'
+fi
+rm -f "$removing" \
+    "$SYSTEM/bin/echolocal" \
+    "$SYSTEM/xbin/busybox" \
+    "$SYSTEM/app/echod/echod" \
+    "$SYSTEM/app/echod/echod.prev" \
+    "$SYSTEM/app/echod/echod.old" \
+    "$MARKER" \
+    "$SYSTEM/etc/ssl/certs/ca-certificates.crt"
+for model in okay_nabu hey_jarvis hey_mycroft; do
+    rm -f "$SYSTEM/etc/echolocal/models/$model.json" \
+        "$SYSTEM/etc/echolocal/models/$model.tflite"
+done
+rmdir "$SYSTEM/etc/echolocal/models" 2>/dev/null || true
+rmdir "$SYSTEM/etc/echolocal" 2>/dev/null || true
+rmdir "$SYSTEM/app/echod" 2>/dev/null || true
+
+ui_print "$ADDON_NAME removed; persistent state was preserved"

@@ -1,0 +1,64 @@
+#!/system/bin/sh
+# System-only EchoLocal service wrapper for Biscuit's reserved ledcontroller slot.
+set -eu
+
+# ponytail: overrides let the host test use a temporary tree; production leaves both unset.
+SYSTEM=${ECHOLOCAL_SYSTEM:-/system}
+STATE=${ECHOLOCAL_STATE:-/data/misc/echolocal}
+MODELS="$STATE/models"
+SEED="$SYSTEM/etc/echolocal/models"
+BB="$SYSTEM/xbin/busybox"
+HELPER="$SYSTEM/bin/echolocal"
+ECHOD="$SYSTEM/app/echod/echod"
+
+fail() {
+    printf 'ledcontroller: %s\n' "$*" >&2
+    exit 1
+}
+
+[ -x "$BB" ] || fail 'missing packaged BusyBox'
+[ -x "$HELPER" ] || fail 'missing EchoLocal helper'
+[ -x "$ECHOD" ] || fail 'missing echod'
+
+remount_system() {
+    [ "$SYSTEM" = /system ] || return 0
+    "$BB" mount -o "remount,$1" /system
+}
+
+rollback_trial() {
+    previous="$ECHOD.prev"
+    [ -f "$previous" ] || return 0
+
+    was=$("$BB" cat "$STATE/updating" 2>/dev/null || true)
+    remount_system rw || fail 'could not remount /system for rollback'
+    "$BB" mv -f "$previous" "$ECHOD" || fail 'could not restore echod.prev'
+    remount_system ro || fail 'could not remount /system read-only after rollback'
+    "$BB" rm -f "$STATE/updating"
+    "$SYSTEM/bin/setprop" echolocal.rolledback "${was:-1}" || true
+}
+
+seed_model() {
+    model=$1
+    for extension in json tflite; do
+        source="$SEED/$model.$extension"
+        destination="$MODELS/$model.$extension"
+        [ -f "$source" ] || fail "missing seeded model: $source"
+        if [ ! -f "$destination" ]; then
+            "$BB" cp "$source" "$destination"
+            "$BB" chown root:system "$destination"
+            "$BB" chmod 0644 "$destination"
+        fi
+    done
+}
+
+rollback_trial
+"$BB" mkdir -p "$MODELS"
+"$BB" chown root:system "$STATE" "$MODELS"
+"$BB" chmod 0770 "$STATE" "$MODELS"
+"$HELPER" key ensure
+
+for model in okay_nabu hey_jarvis hey_mycroft; do
+    seed_model "$model"
+done
+
+exec "$ECHOD"

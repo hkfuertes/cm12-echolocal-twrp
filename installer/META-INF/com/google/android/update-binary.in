@@ -1,0 +1,245 @@
+#!/sbin/sh
+set -eu
+
+OUTFD=${2:-}
+ZIP=${3:-}
+SYSTEM=${ECHOLOCAL_SYSTEM:-/system}
+TMPDIR=${ECHOLOCAL_TMPDIR:-/dev/tmp}
+ADDON_NAME=@ADDON_NAME@
+VERSION=@VERSION@
+BASE_LEDCONTROLLER_SHA256=@BASE_LEDCONTROLLER_SHA256@
+MANIFEST_SHA256=@MANIFEST_SHA256@
+PAYLOAD_BYTES=@PAYLOAD_BYTES@
+
+GETPROP=${GETPROP:-getprop}
+SHA256SUM=${SHA256SUM:-sha256sum}
+UNZIP=${UNZIP:-unzip}
+CHCON=${CHCON:-chcon}
+STAT=${STAT:-stat}
+
+SERVICE="$SYSTEM/bin/ledcontroller"
+BACKUP="$SERVICE.orig"
+MARKER="$SYSTEM/etc/echolocal/.biscuit-addon"
+STAGE=
+FIRST_INSTALL=0
+CREATED_DIRS=
+
+ui_print() {
+    if [ -n "$OUTFD" ] && [ -e "/proc/self/fd/$OUTFD" ]; then
+        printf 'ui_print %s\nui_print\n' "$*" > "/proc/self/fd/$OUTFD"
+    else
+        printf '%s\n' "$*"
+    fi
+}
+
+die() {
+    ui_print "E: $*"
+    exit 1
+}
+
+need_tool() {
+    command -v "$1" >/dev/null 2>&1 || die "recovery lacks required tool: $1"
+}
+
+hash_file() {
+    "$SHA256SUM" "$1" | awk '{print $1}'
+}
+
+require_regular() {
+    [ -f "$1" ] && [ ! -L "$1" ] || die "expected regular file: $1"
+}
+
+require_mode() {
+    actual=$("$STAT" -c '%a' "$1" 2>/dev/null || true)
+    [ "$actual" = "$2" ] || die "wrong mode on $1: expected $2, got ${actual:-unknown}"
+}
+
+read_prop() {
+    prop_name=$1
+    prop_value=$("$GETPROP" "$prop_name" 2>/dev/null || true)
+    if [ -z "$prop_value" ]; then
+        for prop_file in /default.prop "$SYSTEM/build.prop"; do
+            [ -f "$prop_file" ] || continue
+            prop_value=$(sed -n "s/^$prop_name=//p" "$prop_file" | head -n 1)
+            [ -z "$prop_value" ] || break
+        done
+    fi
+    printf '%s' "$prop_value"
+}
+
+ensure_system() {
+    [ -d "$SYSTEM" ] || die "missing system mount: $SYSTEM"
+    [ "$SYSTEM" != /system ] && return 0
+    if mount | grep -Eq '[[:space:]]/system[[:space:]]'; then
+        return 0
+    fi
+    mount /system >/dev/null 2>&1 || die 'could not mount /system'
+}
+
+free_kb() {
+    if [ "${ECHOLOCAL_FREE_KB+x}" = x ]; then
+        printf '%s\n' "$ECHOLOCAL_FREE_KB"
+        return 0
+    fi
+    df -k "$SYSTEM" | awk 'NR == 2 { print $4; exit }'
+}
+
+ensure_dir() {
+    directory=$1
+    [ ! -L "$directory" ] || die "refusing symlink directory: $directory"
+    if [ ! -d "$directory" ]; then
+        mkdir -p "$directory" || die "could not create $directory"
+        CREATED_DIRS="$directory $CREATED_DIRS"
+    fi
+    chmod 0755 "$directory" || die "could not set mode on $directory"
+    "$CHCON" u:object_r:system_file:s0 "$directory" || die "could not label $directory"
+}
+
+install_file() {
+    relative=$1
+    mode=$2
+    source="$STAGE/payload/system/$relative"
+    destination="$SYSTEM/$relative"
+    require_regular "$source"
+    [ ! -L "$destination" ] || die "refusing to follow symlink: $destination"
+    source_hash=$(hash_file "$source")
+    cp "$source" "$destination" || die "could not install $destination"
+    chmod "$mode" "$destination" || die "could not set mode on $destination"
+    "$CHCON" u:object_r:system_file:s0 "$destination" || die "could not label $destination"
+    require_mode "$destination" "$mode"
+    [ "$(hash_file "$destination")" = "$source_hash" ] || die "installed hash mismatch: $destination"
+}
+
+remove_new_payload() {
+    rm -f "$SERVICE" \
+        "$SYSTEM/bin/echolocal" \
+        "$SYSTEM/xbin/busybox" \
+        "$SYSTEM/app/echod/echod" \
+        "$SYSTEM/etc/echolocal/.biscuit-addon" \
+        "$SYSTEM/etc/ssl/certs/ca-certificates.crt" 2>/dev/null || true
+    for model in okay_nabu hey_jarvis hey_mycroft; do
+        rm -f "$SYSTEM/etc/echolocal/models/$model.json" \
+            "$SYSTEM/etc/echolocal/models/$model.tflite" 2>/dev/null || true
+    done
+    for directory in $CREATED_DIRS; do
+        rmdir "$directory" 2>/dev/null || true
+    done
+}
+
+finish() {
+    status=$?
+    trap - EXIT HUP INT TERM
+    if [ "$status" -ne 0 ] && [ "$FIRST_INSTALL" -eq 1 ]; then
+        remove_new_payload
+        [ ! -f "$BACKUP" ] || mv "$BACKUP" "$SERVICE" 2>/dev/null || true
+    fi
+    [ -z "$STAGE" ] || rm -rf "$STAGE"
+    exit "$status"
+}
+trap finish EXIT HUP INT TERM
+
+for tool in "$GETPROP" "$SHA256SUM" "$UNZIP" "$CHCON" "$STAT" awk cp chmod df find grep mkdir mount mv rm sed sha256sum; do
+    need_tool "$tool"
+done
+
+[ -n "$ZIP" ] && [ -f "$ZIP" ] || die 'missing installation ZIP'
+product=$(read_prop ro.product.device)
+[ -n "$product" ] || product=$(read_prop ro.build.product)
+[ "$product" = biscuit ] || die "this ZIP is only for Biscuit (got ${product:-unknown})"
+ensure_system
+
+if [ -f "$MARKER" ]; then
+    require_regular "$MARKER"
+    grep -qx "name=$ADDON_NAME" "$MARKER" || die 'unknown EchoLocal add-on marker'
+    grep -qx "base_ledcontroller_sha256=$BASE_LEDCONTROLLER_SHA256" "$MARKER" ||
+        die 'add-on marker does not match the supported generic base'
+    require_regular "$BACKUP"
+    [ "$(hash_file "$BACKUP")" = "$BASE_LEDCONTROLLER_SHA256" ] ||
+        die 'preserved generic ledcontroller does not match the supported base'
+    require_regular "$SERVICE"
+    [ ! -e "$SYSTEM/app/echod/echod.prev" ] ||
+        die 'echod.prev is pending rollback; boot once before upgrading'
+else
+    require_regular "$SERVICE"
+    [ "$(hash_file "$SERVICE")" = "$BASE_LEDCONTROLLER_SHA256" ] ||
+        die 'unsupported generic base: ledcontroller hash does not match'
+    for path in "$BACKUP" "$SYSTEM/bin/echolocal" "$SYSTEM/xbin/busybox" \
+        "$SYSTEM/app/echod" "$SYSTEM/etc/echolocal" \
+        "$SYSTEM/etc/ssl/certs/ca-certificates.crt"; do
+        [ ! -e "$path" ] && [ ! -L "$path" ] || die "refusing to overwrite existing path: $path"
+    done
+fi
+
+available=$(free_kb)
+case "$available" in
+    ''|*[!0-9]*) die "could not determine free space on $SYSTEM" ;;
+esac
+needed=$((PAYLOAD_BYTES / 1024 + 1024))
+[ "$available" -ge "$needed" ] ||
+    die "insufficient free space on $SYSTEM: need ${needed}KiB, have ${available}KiB"
+
+STAGE="$TMPDIR/echolocal-install.$$"
+rm -rf "$STAGE"
+mkdir -p "$STAGE" || die 'could not create recovery staging directory'
+"$UNZIP" -o "$ZIP" 'payload/*' payload-manifest.sha256 -d "$STAGE" >/dev/null ||
+    die 'could not extract payload'
+require_regular "$STAGE/payload-manifest.sha256"
+[ "$(hash_file "$STAGE/payload-manifest.sha256")" = "$MANIFEST_SHA256" ] ||
+    die 'payload manifest hash mismatch'
+( cd "$STAGE" && "$SHA256SUM" -c payload-manifest.sha256 ) >/dev/null 2>&1 ||
+    die 'payload file hash mismatch'
+[ -z "$(find "$STAGE/payload" -type l -print)" ] || die 'payload contains an unexpected symlink'
+
+for relative in \
+    system/bin/ledcontroller \
+    system/bin/echolocal \
+    system/xbin/busybox \
+    system/app/echod/echod \
+    system/etc/ssl/certs/ca-certificates.crt \
+    system/etc/echolocal/.biscuit-addon \
+    system/etc/echolocal/models/okay_nabu.json \
+    system/etc/echolocal/models/okay_nabu.tflite \
+    system/etc/echolocal/models/hey_jarvis.json \
+    system/etc/echolocal/models/hey_jarvis.tflite \
+    system/etc/echolocal/models/hey_mycroft.json \
+    system/etc/echolocal/models/hey_mycroft.tflite; do
+    require_regular "$STAGE/payload/$relative"
+done
+for relative in system/bin/ledcontroller system/bin/echolocal system/xbin/busybox system/app/echod/echod; do
+    require_mode "$STAGE/payload/$relative" 755
+done
+for relative in system/etc/ssl/certs/ca-certificates.crt system/etc/echolocal/.biscuit-addon \
+    system/etc/echolocal/models/okay_nabu.json system/etc/echolocal/models/okay_nabu.tflite \
+    system/etc/echolocal/models/hey_jarvis.json system/etc/echolocal/models/hey_jarvis.tflite \
+    system/etc/echolocal/models/hey_mycroft.json system/etc/echolocal/models/hey_mycroft.tflite; do
+    require_mode "$STAGE/payload/$relative" 644
+done
+grep -qx "name=$ADDON_NAME" "$STAGE/payload/system/etc/echolocal/.biscuit-addon" ||
+    die 'payload marker has the wrong name'
+grep -qx "base_ledcontroller_sha256=$BASE_LEDCONTROLLER_SHA256" \
+    "$STAGE/payload/system/etc/echolocal/.biscuit-addon" || die 'payload marker has the wrong base'
+
+if [ ! -f "$MARKER" ]; then
+    mv "$SERVICE" "$BACKUP" || die 'could not preserve the generic ledcontroller'
+    FIRST_INSTALL=1
+fi
+
+ensure_dir "$SYSTEM/xbin"
+ensure_dir "$SYSTEM/app/echod"
+ensure_dir "$SYSTEM/etc/echolocal"
+ensure_dir "$SYSTEM/etc/echolocal/models"
+ensure_dir "$SYSTEM/etc/ssl"
+ensure_dir "$SYSTEM/etc/ssl/certs"
+
+install_file bin/echolocal 755
+install_file xbin/busybox 755
+install_file app/echod/echod 755
+install_file etc/ssl/certs/ca-certificates.crt 644
+for model in okay_nabu hey_jarvis hey_mycroft; do
+    install_file "etc/echolocal/models/$model.json" 644
+    install_file "etc/echolocal/models/$model.tflite" 644
+done
+install_file bin/ledcontroller 755
+install_file etc/echolocal/.biscuit-addon 644
+
+ui_print "$ADDON_NAME $VERSION installed; /data was not modified"
