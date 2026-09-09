@@ -4,6 +4,7 @@ set -eu
 OUTFD=${2:-}
 ZIP=${3:-}
 SYSTEM=${ECHOLOCAL_SYSTEM:-/system}
+STATE=${ECHOLOCAL_STATE:-/data/misc/echolocal}
 TMPDIR=${ECHOLOCAL_TMPDIR:-/dev/tmp}
 ADDON_NAME=@ADDON_NAME@
 VERSION=@VERSION@
@@ -15,6 +16,10 @@ GETPROP=${GETPROP:-getprop}
 SHA256SUM=${SHA256SUM:-sha256sum}
 UNZIP=${UNZIP:-unzip}
 CHCON=${CHCON:-chcon}
+CHOWN=${CHOWN:-chown}
+DD=${DD:-dd}
+BASE64=${BASE64:-base64}
+WC=${WC:-wc}
 DF=${DF:-df}
 
 SERVICE="$SYSTEM/bin/ledcontroller"
@@ -26,6 +31,9 @@ STOP_ANIMATION="$SYSTEM/bin/stop_animation.sh"
 START_BACKUP="$START_ANIMATION.orig"
 STOP_BACKUP="$STOP_ANIMATION.orig"
 MARKER="$SYSTEM/etc/echolocal/.biscuit-addon"
+STATE_PARENT=${STATE%/*}
+STATE_MODELS="$STATE/models"
+STATE_KEY="$STATE/psk"
 STAGE=
 FIRST_INSTALL=0
 SERVICE_BACKED_UP=0
@@ -33,6 +41,9 @@ START_BACKED_UP=0
 STOP_BACKED_UP=0
 HOOK_MODE=
 CREATED_DIRS=
+CREATED_STATE_DIRS=
+CREATED_STATE_FILES=
+KEY_TMP=
 
 ui_print() {
     if [ -n "$OUTFD" ] && [ -e "/proc/self/fd/$OUTFD" ]; then
@@ -98,6 +109,10 @@ label_system_file() {
     "$CHCON" --reference="$BACKUP" "$1" >/dev/null 2>&1 || true
 }
 
+label_state_file() {
+    "$CHCON" --reference="$STATE_PARENT" "$1" >/dev/null 2>&1 || true
+}
+
 free_kb() {
     if [ "${ECHOLOCAL_FREE_KB+x}" = x ]; then
         printf '%s\n' "$ECHOLOCAL_FREE_KB"
@@ -116,6 +131,68 @@ ensure_dir() {
     fi
     chmod 0755 "$directory" || die "could not set mode on $directory"
     label_system_file "$directory"
+}
+
+ensure_state_dir() {
+    directory=$1
+    mode=$2
+    [ ! -L "$directory" ] || die "refusing symlink state directory: $directory"
+    if [ ! -e "$directory" ]; then
+        mkdir "$directory" || die "could not create $directory"
+        CREATED_STATE_DIRS="$directory $CREATED_STATE_DIRS"
+    fi
+    [ -d "$directory" ] || die "expected state directory: $directory"
+    "$CHOWN" 0:1000 "$directory" || die "could not set owner on $directory"
+    chmod "$mode" "$directory" || die "could not set mode on $directory"
+    label_state_file "$directory"
+}
+
+seed_state_file() {
+    source=$1
+    destination=$2
+    require_regular "$source"
+    [ ! -L "$destination" ] || die "refusing symlink state file: $destination"
+    if [ -e "$destination" ]; then
+        require_regular "$destination"
+        return 0
+    fi
+    cp "$source" "$destination" || die "could not seed $destination"
+    "$CHOWN" 0:1000 "$destination" || die "could not set owner on $destination"
+    chmod 0644 "$destination" || die "could not set mode on $destination"
+    label_state_file "$destination"
+    CREATED_STATE_FILES="$destination $CREATED_STATE_FILES"
+}
+
+ensure_state_key() {
+    [ ! -L "$STATE_KEY" ] || die "refusing symlink state file: $STATE_KEY"
+    if [ -e "$STATE_KEY" ]; then
+        require_regular "$STATE_KEY"
+        [ -s "$STATE_KEY" ] || die "existing ESPHome key is empty"
+        return 0
+    fi
+    KEY_TMP="$STATE/.psk.$$"
+    umask 077
+    "$DD" if=/dev/urandom bs=32 count=1 2>/dev/null | "$BASE64" > "$KEY_TMP" ||
+        die 'could not generate ESPHome key'
+    [ "$("$WC" -c < "$KEY_TMP")" = 45 ] || die 'generated ESPHome key has the wrong length'
+    "$CHOWN" 0:1000 "$KEY_TMP" || die "could not set owner on $KEY_TMP"
+    chmod 0600 "$KEY_TMP" || die "could not set mode on $KEY_TMP"
+    label_state_file "$KEY_TMP"
+    mv "$KEY_TMP" "$STATE_KEY" || die 'could not install ESPHome key'
+    KEY_TMP=
+    CREATED_STATE_FILES="$STATE_KEY $CREATED_STATE_FILES"
+}
+
+initialize_runtime_state() {
+    [ "$STATE_PARENT" != "$STATE" ] && [ -d "$STATE_PARENT" ] && [ ! -L "$STATE_PARENT" ] ||
+        die "missing safe data state parent: $STATE_PARENT"
+    ensure_state_dir "$STATE" 0770
+    ensure_state_dir "$STATE_MODELS" 0770
+    ensure_state_key
+    for model in okay_nabu hey_jarvis hey_mycroft; do
+        seed_state_file "$SYSTEM/etc/echolocal/models/$model.json" "$STATE_MODELS/$model.json"
+        seed_state_file "$SYSTEM/etc/echolocal/models/$model.tflite" "$STATE_MODELS/$model.tflite"
+    done
 }
 
 install_file() {
@@ -166,21 +243,34 @@ remove_new_payload() {
     done
 }
 
+remove_new_state() {
+    [ -z "$KEY_TMP" ] || rm -f "$KEY_TMP" 2>/dev/null || true
+    for file in $CREATED_STATE_FILES; do
+        rm -f "$file" 2>/dev/null || true
+    done
+    for directory in $CREATED_STATE_DIRS; do
+        rmdir "$directory" 2>/dev/null || true
+    done
+}
+
 finish() {
     status=$?
     trap - EXIT HUP INT TERM
-    if [ "$status" -ne 0 ] && [ "$FIRST_INSTALL" -eq 1 ]; then
-        remove_new_payload
-        [ "$STOP_BACKED_UP" -eq 0 ] || mv "$STOP_BACKUP" "$STOP_ANIMATION" 2>/dev/null || true
-        [ "$START_BACKED_UP" -eq 0 ] || mv "$START_BACKUP" "$START_ANIMATION" 2>/dev/null || true
-        [ "$SERVICE_BACKED_UP" -eq 0 ] || mv "$BACKUP" "$SERVICE" 2>/dev/null || true
+    if [ "$status" -ne 0 ]; then
+        remove_new_state
+        if [ "$FIRST_INSTALL" -eq 1 ]; then
+            remove_new_payload
+            [ "$STOP_BACKED_UP" -eq 0 ] || mv "$STOP_BACKUP" "$STOP_ANIMATION" 2>/dev/null || true
+            [ "$START_BACKED_UP" -eq 0 ] || mv "$START_BACKUP" "$START_ANIMATION" 2>/dev/null || true
+            [ "$SERVICE_BACKED_UP" -eq 0 ] || mv "$BACKUP" "$SERVICE" 2>/dev/null || true
+        fi
     fi
     [ -z "$STAGE" ] || rm -rf "$STAGE"
     exit "$status"
 }
 trap finish EXIT HUP INT TERM
 
-for tool in "$GETPROP" "$SHA256SUM" "$UNZIP" "$CHCON" "$DF" awk cp chmod find grep head ln mkdir mount mv readlink rm sed sha256sum; do
+for tool in "$GETPROP" "$SHA256SUM" "$UNZIP" "$CHCON" "$CHOWN" "$DD" "$BASE64" "$WC" "$DF" awk cp chmod find grep head ln mkdir mount mv readlink rm sed sha256sum; do
     need_tool "$tool"
 done
 
@@ -303,7 +393,8 @@ for model in okay_nabu hey_jarvis hey_mycroft; do
     install_file "etc/echolocal/models/$model.json" 644
     install_file "etc/echolocal/models/$model.tflite" 644
 done
+initialize_runtime_state
 install_service_link
 install_marker
 
-ui_print "$ADDON_NAME $VERSION installed; run echolocal repair after a /data wipe"
+ui_print "$ADDON_NAME $VERSION installed; runtime state initialized"

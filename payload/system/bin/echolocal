@@ -9,6 +9,7 @@ KEY="$STATE/psk"
 MODELS="$STATE/models"
 SEED="$SYSTEM/etc/echolocal/models"
 WPA_CLI="$SYSTEM/bin/wpa_cli"
+WPA_PASSPHRASE="$SYSTEM/bin/wpa_passphrase"
 WPA_SOCKETS=${ECHOLOCAL_WIFI_SOCKETS:-/data/misc/wifi/sockets}
 
 fail() {
@@ -105,7 +106,7 @@ wifi_cli() {
 }
 
 wifi_ok() {
-    wifi_cli "$@" >/dev/null || fail "wpa_cli $1 failed"
+    response=$(wifi_cli "$@" 2>/dev/null)
 }
 
 status_value() {
@@ -122,11 +123,12 @@ wifi_status() {
 }
 
 remove_ssid() {
-    ids=$(wifi_cli list_networks |
-        "$BB" awk -F '\t' -v wanted="$1" 'NR > 1 && $2 == wanted { print $1 }') ||
-        fail 'cannot list saved networks'
+    networks=$(wifi_cli list_networks) || fail 'cannot list saved networks'
+    ids=$(printf '%s\n' "$networks" |
+        "$BB" awk -F '\t' -v wanted="$1" 'NR > 1 && $2 == wanted { print $1 }')
     for network_id in $ids; do
-        wifi_ok remove_network "$network_id"
+        wifi_ok remove_network "$network_id" ||
+            fail 'wpa_cli remove_network failed'
     done
 }
 
@@ -137,32 +139,21 @@ is_hex_key() {
     esac
 }
 
-read_passphrase() {
-    [ -t 0 ] || fail 'wifi connect needs an interactive ADB shell'
-    printf 'Passphrase: ' >&2
-    "$BB" stty -echo
-    trap '"$BB" stty echo; printf "\n" >&2' EXIT HUP INT TERM
-    IFS= read -r passphrase || {
-        "$BB" stty echo
-        trap - EXIT HUP INT TERM
-        fail 'could not read passphrase'
-    }
-    "$BB" stty echo
-    trap - EXIT HUP INT TERM
-    printf '\n' >&2
-}
-
 prepare_wpa_credential() {
+    passphrase=$1
     if is_hex_key "$passphrase"; then
         psk=$passphrase
     else
         [ "${#passphrase}" -ge 8 ] && [ "${#passphrase}" -le 63 ] ||
             fail 'WPA passphrase must contain 8 to 63 characters'
-        psk=$(printf '%s' "$passphrase" |
-            "$BB" awk '{ gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "\"%s\"", $0 }')
+        [ -x "$WPA_PASSPHRASE" ] ||
+            fail 'missing base wpa_passphrase'
+        psk=$(printf '%s\n' "$passphrase" |
+            "$WPA_PASSPHRASE" "$ssid" |
+            "$BB" awk '$1 ~ /^psk=/ { sub(/^psk=/, "", $1); print $1; exit }')
     fi
     unset passphrase
-    [ -n "$psk" ] || fail 'could not format WPA credential'
+    is_hex_key "$psk" || fail 'could not derive WPA key'
 }
 
 wait_for_wifi() {
@@ -189,18 +180,36 @@ wait_for_wifi() {
     return 1
 }
 
+wifi_cleanup() {
+    response=$(wifi_cli remove_network "$network_id" 2>/dev/null) || true
+    response=$(wifi_cli save_config 2>/dev/null) || true
+    fail "$1"
+}
+
+wifi_wait_ready() {
+    # ponytail: wait 30s for the base Wi-Fi socket; use a readiness property if CM12 gains one.
+    attempts=0
+    while [ "$attempts" -lt 30 ]; do
+        ready=$(wifi_cli status 2>/dev/null) && return 0
+        attempts=$((attempts + 1))
+        sleep 1
+    done
+    fail 'wpa_supplicant is not ready'
+}
+
 wifi_connect() {
     ssid=$1
     mode=$2
     [ -n "$ssid" ] || fail 'SSID must not be empty'
-    ssid_hex=$(printf '%s' "$ssid" | "$BB" od -An -tx1 | "$BB" tr -d ' \n')
+    ssid_hex=$(printf '%s' "$ssid" | "$BB" hexdump -v -e '1/1 "%02x"') ||
+        fail 'could not encode SSID'
     [ -n "$ssid_hex" ] || fail 'SSID must not be empty'
 
     if [ "$mode" = psk ]; then
-        read_passphrase
-        prepare_wpa_credential
+        prepare_wpa_credential "$3"
     fi
 
+    wifi_wait_ready
     remove_ssid "$ssid"
     network_id=$(wifi_cli add_network | "$BB" awk 'NF { id = $0 } END { print id }') ||
         fail 'could not add network'
@@ -208,23 +217,28 @@ wifi_connect() {
         ''|*[!0-9]*) fail 'wpa_cli returned an invalid network id' ;;
     esac
 
-    wifi_ok set_network "$network_id" ssid "$ssid_hex"
-    wifi_ok set_network "$network_id" scan_ssid 1
+    wifi_ok set_network "$network_id" ssid "$ssid_hex" ||
+        wifi_cleanup 'could not set Wi-Fi SSID'
+    wifi_ok set_network "$network_id" scan_ssid 1 ||
+        wifi_cleanup 'could not configure Wi-Fi scanning'
     if [ "$mode" = psk ]; then
-        wifi_ok set_network "$network_id" psk "$psk"
+        wifi_ok set_network "$network_id" key_mgmt WPA-PSK ||
+            wifi_cleanup 'could not configure WPA-PSK'
+        wifi_ok set_network "$network_id" psk "$psk" ||
+            wifi_cleanup 'could not set WPA key'
         unset psk
     else
-        wifi_ok set_network "$network_id" key_mgmt NONE
+        wifi_ok set_network "$network_id" key_mgmt NONE ||
+            wifi_cleanup 'could not configure an open network'
     fi
-    wifi_ok enable_network "$network_id"
-    wifi_ok select_network "$network_id"
-    wifi_ok save_config
+    wifi_ok enable_network "$network_id" ||
+        wifi_cleanup 'could not enable Wi-Fi network'
+    wifi_ok select_network "$network_id" ||
+        wifi_cleanup 'could not select Wi-Fi network'
+    wifi_ok save_config ||
+        wifi_cleanup 'could not save Wi-Fi network'
 
-    if ! wait_for_wifi; then
-        wifi_cli remove_network "$network_id" >/dev/null || true
-        wifi_cli save_config >/dev/null || true
-        fail "did not connect to $ssid"
-    fi
+    wait_for_wifi || wifi_cleanup "did not connect to $ssid"
     printf 'connected: %s (%s)\n' "$ssid" "$(status_value "$status" ip_address)"
 }
 
@@ -234,7 +248,7 @@ Usage:
   echolocal repair
   echolocal key show|rotate
   echolocal wifi status
-  echolocal wifi connect <ssid>
+  echolocal wifi connect <ssid> <passphrase>
   echolocal wifi open <ssid>
 EOF
     exit 2
@@ -257,7 +271,7 @@ case "${1:-}" in
     wifi)
         case "${2:-}" in
             status) wifi_status ;;
-            connect) [ "$#" -eq 3 ] || usage; wifi_connect "$3" psk ;;
+            connect) [ "$#" -eq 4 ] || usage; wifi_connect "$3" psk "$4" ;;
             open) [ "$#" -eq 3 ] || usage; wifi_connect "$3" open ;;
             *) usage ;;
         esac
