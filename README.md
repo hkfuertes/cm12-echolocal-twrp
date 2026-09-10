@@ -62,9 +62,10 @@ make test
 Toolchain caches, source checkouts, staging trees, and ZIPs stay under
 ignored `work/` and `out/`. Pins (tag, commit, image digest, per-target binary
 and model hashes) live in [`scripts/versions.sh`](scripts/versions.sh);
-credentials never enter the repository or ZIP. The armv7 build applies its tracked
-ALSA ABI patch only to an isolated `work/` copy after `git apply --check`; its
-compile-time assertions require the ARM EABI sizes before packaging.
+credentials never enter the repository or ZIP. The armv7 build applies separate
+tracked ALSA and evdev-input ABI patches only to an isolated `work/` copy, each
+after `git apply --check`; their compile-time assertions require the ARM EABI
+sizes before packaging.
 
 Flash `out/cm12-echolocal-biscuit-0.0.6-arm64.zip` in TWRP only on the
 supported generic Biscuit base. Its adjacent `-arm64-uninstall.zip` restores
