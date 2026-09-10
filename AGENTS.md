@@ -57,8 +57,9 @@ framework-free Biscuit `cm12-minimal` base. Keep this project independent from
   commit) inside the Docker toolchain image pinned by digest; verify each
   target binary against its pinned SHA-256 and as a static ELF executable for
   its target architecture (AArch64 or ARMv7). The ARMv7 build applies its
-  tracked ALSA and evdev-input ABI patches only to an isolated work copy, each
-  after a clean-apply preflight; ARM64 always builds the unpatched tag. Model
+  tracked ALSA, evdev-input ABI, and self-update-disable patches only to an
+  isolated work copy, each after a clean-apply preflight; ARM64 always builds
+  the unpatched tag. Model
   assets and any future
   add-on-owned runtime tool follow the same rule.
 - Do not commit downloads, generated models, staging trees, or ZIPs. They
