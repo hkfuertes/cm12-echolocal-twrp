@@ -4,7 +4,6 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 . "$ROOT/scripts/versions.sh"
 INSTALL_ZIP=${1:-"$ROOT/out/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH.zip"}
-UNINSTALL_ZIP=${2:-"$ROOT/out/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH-uninstall.zip"}
 FIXTURE="$ROOT/tests/fixtures/ledcontroller"
 [ "$(sha256sum "$FIXTURE" | awk '{print $1}')" = "$BASE_LEDCONTROLLER_SHA256" ] || {
     printf '%s\n' 'generic fallback fixture hash changed' >&2
@@ -40,9 +39,7 @@ exit 0
 EOF
 chmod 0755 "$tmp/bin/getprop" "$tmp/bin/chcon" "$tmp/bin/df" "$tmp/bin/chcon-fails" "$tmp/bin/chown"
 unzip -q "$INSTALL_ZIP" -d "$tmp/install"
-unzip -q "$UNINSTALL_ZIP" -d "$tmp/uninstall"
 install_binary="$tmp/install/META-INF/com/google/android/update-binary"
-uninstall_binary="$tmp/uninstall/META-INF/com/google/android/update-binary"
 
 setup_system() {
     rm -rf "$1" "$1-data"
@@ -92,6 +89,7 @@ run_update "$install_binary" "$INSTALL_ZIP" "$system" biscuit 999999
 [ "$(readlink "$system/bin/ledcontroller")" = "$system/app/echod/echod" ]
 [ "$(sha256sum "$system/bin/ledcontroller.orig" | awk '{print $1}')" = "$BASE_LEDCONTROLLER_SHA256" ]
 [ -f "$system/etc/echolocal/.biscuit-addon" ]
+grep -qx "version=$ECHOLOCAL_TAG" "$system/etc/echolocal/.biscuit-addon"
 [ "$(sha256sum "$system/xbin/busybox" | awk '{print $1}')" = "$base_busybox_hash" ]
 [ "$(sha256sum "$system/etc/ssl/certs/ca-certificates.crt" | awk '{print $1}')" = "$base_ca_hash" ]
 grep -qx 'animation_hooks=managed' "$system/etc/echolocal/.biscuit-addon"
@@ -137,12 +135,6 @@ run_update "$install_binary" "$INSTALL_ZIP" "$minimal" biscuit 999999
 grep -qx 'animation_hooks=absent' "$minimal/etc/echolocal/.biscuit-addon"
 [ ! -e "$minimal/bin/start_animation.sh" ]
 [ ! -e "$minimal/bin/stop_animation.sh" ]
-cp "$tmp/install/payload/system/bin/start_animation.sh" "$minimal/bin/start_animation.sh"
-cp "$tmp/install/payload/system/bin/stop_animation.sh" "$minimal/bin/stop_animation.sh"
-run_update "$uninstall_binary" "$UNINSTALL_ZIP" "$minimal" biscuit 999999
-[ ! -e "$minimal/bin/start_animation.sh" ]
-[ ! -e "$minimal/bin/stop_animation.sh" ]
-[ "$(sha256sum "$minimal/bin/ledcontroller" | awk '{print $1}')" = "$BASE_LEDCONTROLLER_SHA256" ]
 
 wrong_device="$tmp/wrong-device"
 setup_system "$wrong_device"
@@ -190,21 +182,5 @@ if run_update "$install_binary" "$bad_zip" "$bad_hash" biscuit 999999; then
     printf '%s\n' 'bad payload manifest was accepted' >&2
     exit 1
 fi
-
-run_update "$uninstall_binary" "$UNINSTALL_ZIP" "$system" biscuit 999999
-[ "$(sha256sum "$system/bin/ledcontroller" | awk '{print $1}')" = "$BASE_LEDCONTROLLER_SHA256" ]
-[ ! -L "$system/bin/ledcontroller" ]
-[ ! -e "$system/bin/ledcontroller.orig" ]
-[ "$(cat "$system/bin/start_animation.sh")" = 'stock start animation' ]
-[ "$(cat "$system/bin/stop_animation.sh")" = 'stock stop animation' ]
-[ ! -e "$system/bin/start_animation.sh.orig" ]
-[ ! -e "$system/bin/stop_animation.sh.orig" ]
-[ ! -e "$system/bin/echolocal" ]
-[ "$(sha256sum "$system/xbin/busybox" | awk '{print $1}')" = "$base_busybox_hash" ]
-[ "$(sha256sum "$system/etc/ssl/certs/ca-certificates.crt" | awk '{print $1}')" = "$base_ca_hash" ]
-[ ! -e "$system/app/echod/echod" ]
-[ ! -e "$system/etc/echolocal/.biscuit-addon" ]
-[ "$(sha256sum "$state/psk" | awk '{print $1}')" = "$key_hash" ]
-[ "$(cat "$state/models/okay_nabu.json")" = 'custom model' ]
 
 printf '%s\n' 'installer refusal, base BusyBox/CA preservation, symlink takeover, managed/absent hook, first-install state, and persistent-state checks passed'

@@ -17,13 +17,11 @@ while read -r name expected source; do
 done
 
 stage="$WORK/stage-$ECHOD_ARCH"
-uninstall_stage="$WORK/uninstall-stage-$ECHOD_ARCH"
-rm -rf "$stage" "$uninstall_stage"
+rm -rf "$stage"
 mkdir -p "$stage/payload/system/bin" \
     "$stage/payload/system/app/echod" \
     "$stage/payload/system/etc/echolocal/models" \
-    "$stage/META-INF/com/google/android" \
-    "$uninstall_stage/META-INF/com/google/android"
+    "$stage/META-INF/com/google/android"
 
 cp "$ROOT/payload/system/bin/echolocal" "$stage/payload/system/bin/echolocal"
 cp "$ROOT/payload/system/bin/start_animation.sh" "$stage/payload/system/bin/start_animation.sh"
@@ -62,38 +60,22 @@ sed -e "s/@ADDON_NAME@/$ADDON_NAME/g" \
     -e "s/@PAYLOAD_BYTES@/$payload_bytes/g" \
     "$ROOT/installer/META-INF/com/google/android/update-binary.in" \
     > "$stage/META-INF/com/google/android/update-binary"
-sed -e "s/@ADDON_NAME@/$ADDON_NAME/g" \
-    -e "s/@BASE_LEDCONTROLLER_SHA256@/$BASE_LEDCONTROLLER_SHA256/g" \
-    "$ROOT/installer/META-INF/com/google/android/update-binary-uninstall.in" \
-    > "$uninstall_stage/META-INF/com/google/android/update-binary"
 cp "$ROOT/installer/META-INF/com/google/android/updater-script" \
     "$stage/META-INF/com/google/android/updater-script"
-cp "$ROOT/installer/META-INF/com/google/android/updater-script" \
-    "$uninstall_stage/META-INF/com/google/android/updater-script"
-chmod 0755 "$stage/META-INF/com/google/android/update-binary" \
-    "$uninstall_stage/META-INF/com/google/android/update-binary"
+chmod 0755 "$stage/META-INF/com/google/android/update-binary"
 
 find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
-find "$uninstall_stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
 mkdir -p "$OUT"
 install_zip="$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH.zip"
-uninstall_zip="$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH-uninstall.zip"
-rm -f "$install_zip" "$install_zip.sha256" "$uninstall_zip" "$uninstall_zip.sha256"
+rm -f "$install_zip" "$install_zip.sha256"
 (
     cd "$stage"
     LC_ALL=C find . -type f -print | sed 's|^./||' | LC_ALL=C sort |
         zip -X -q "$install_zip" -@
 )
 (
-    cd "$uninstall_stage"
-    LC_ALL=C find . -type f -print | sed 's|^./||' | LC_ALL=C sort |
-        zip -X -q "$uninstall_zip" -@
-)
-(
     cd "$OUT"
     sha256sum "$(basename "$install_zip")" > "$(basename "$install_zip").sha256"
-    sha256sum "$(basename "$uninstall_zip")" > "$(basename "$uninstall_zip").sha256"
 )
 
 printf '%s\n' "built $install_zip"
-printf '%s\n' "built $uninstall_zip"

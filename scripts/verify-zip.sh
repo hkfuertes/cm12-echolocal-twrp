@@ -8,9 +8,7 @@ for tool in file find grep mktemp sha256sum stat unzip; do
 done
 
 install_zip=${1:-"$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH.zip"}
-uninstall_zip=${2:-"$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH-uninstall.zip"}
 [ -f "$install_zip" ] || fail "missing ZIP: $install_zip"
-[ -f "$uninstall_zip" ] || fail "missing ZIP: $uninstall_zip"
 
 verify_sidecar() {
     zip_path=$1
@@ -37,17 +35,13 @@ forbidden_operations() {
 }
 
 verify_sidecar "$install_zip"
-verify_sidecar "$uninstall_zip"
 unzip -t "$install_zip" >/dev/null
-unzip -t "$uninstall_zip" >/dev/null
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 unzip -q "$install_zip" -d "$tmp/install"
-unzip -q "$uninstall_zip" -d "$tmp/uninstall"
 
 [ -z "$(find "$tmp/install" -type l -print)" ] || fail 'installer ZIP contains a symlink'
-[ -z "$(find "$tmp/uninstall" -type l -print)" ] || fail 'uninstaller ZIP contains a symlink'
 [ ! -e "$tmp/install/payload/system/etc/ssl/certs/ca-certificates.crt" ] ||
     fail 'installer must not package the base CA bundle'
 (
@@ -94,17 +88,15 @@ grep -Fq 'repair)' "$tmp/install/payload/system/bin/echolocal" ||
     fail 'helper must not manage Wi-Fi'
 grep -qx "name=$ADDON_NAME" "$tmp/install/payload/system/etc/echolocal/.biscuit-addon" ||
     fail 'wrong add-on marker'
+grep -qx "version=$ECHOLOCAL_TAG" "$tmp/install/payload/system/etc/echolocal/.biscuit-addon" ||
+    fail 'wrong add-on version'
 grep -qx "base_ledcontroller_sha256=$BASE_LEDCONTROLLER_SHA256" \
     "$tmp/install/payload/system/etc/echolocal/.biscuit-addon" || fail 'wrong base marker'
 
 install_binary="$tmp/install/META-INF/com/google/android/update-binary"
-uninstall_binary="$tmp/uninstall/META-INF/com/google/android/update-binary"
 mode_is "$install_binary" 755
-mode_is "$uninstall_binary" 755
 sh -n "$install_binary"
-sh -n "$uninstall_binary"
 forbidden_operations "$install_binary"
-forbidden_operations "$uninstall_binary"
 grep -Fq -- '--reference="$BACKUP"' "$install_binary" ||
     fail 'installer does not attempt labels from the preserved fallback'
 grep -Fq 'BACKUP="$SERVICE.orig"' "$install_binary" || fail 'installer does not preserve fallback'
@@ -115,8 +107,5 @@ grep -Fq 'STATE=${ECHOLOCAL_STATE:-/data/misc/echolocal}' "$install_binary" ||
     fail 'installer does not restrict runtime state to the add-on path'
 grep -Fq 'START_BACKUP="$START_ANIMATION.orig"' "$install_binary" ||
     fail 'installer does not preserve animation hooks'
-grep -Fq 'expected symlink' "$uninstall_binary" || fail 'uninstaller does not require service symlink'
-grep -Fq 'persistent state was preserved' "$uninstall_binary" ||
-    fail 'uninstaller does not document state preservation'
 
-printf '%s\n' "verified $install_zip and $uninstall_zip"
+printf '%s\n' "verified $install_zip"

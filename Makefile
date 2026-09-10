@@ -33,4 +33,5 @@ test: verify
 	GOARCH=arm GOARM=7 ./tests/test-zip.sh
 
 clean:
+	if [ -d work ] && [ ! -L work ]; then chmod -R u+w work 2>/dev/null || :; fi
 	rm -rf work out
