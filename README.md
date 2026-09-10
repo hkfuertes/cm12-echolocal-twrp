@@ -15,8 +15,7 @@ A reproducible, TWRP-flashable EchoLocal add-on for the framework-free Biscuit
   supplied by the base;
 - initializes a missing ESPHome key and missing wake-word models on first install,
   without overwriting existing runtime state; and
-- provides `echolocal repair` to recreate missing state after a `/data` wipe,
-  without restoring Wi-Fi credentials; and
+- provides `echolocal repair` to recreate missing state after a `/data` wipe; and
 - builds a matching uninstaller that restores the generic fallback and leaves
   `/data/misc/echolocal` intact.
 
@@ -27,21 +26,13 @@ ZIP afterwards.
 ## Base requirements
 
 - `/system/xbin/busybox` must be a regular executable supplied by `cm12-minimal`.
-- `/system/bin/wpa_passphrase` must be supplied by CM12 to provision protected Wi-Fi.
 - CM12 owns the TLS trust roots. This ZIP never packages, overwrites, or
   removes certificates.
 
-## Wi-Fi
+## Network provisioning
 
-```sh
-adb shell echolocal wifi connect '<ssid>' '<passphrase>'
-adb shell echolocal wifi open '<ssid>'
-adb shell echolocal wifi status
-```
-
-`wifi connect` takes an 8–63 character WPA passphrase and derives the raw
-WPA key with the base `wpa_passphrase`; a 64-character hexadecimal key is also
-accepted directly. The ZIP never contains Wi-Fi credentials.
+The ROM owns Wi-Fi provisioning through `wpa_connect`; EchoLocal never writes
+or stores Wi-Fi credentials.
 
 ## ESPHome key
 

@@ -29,7 +29,6 @@ verify-armv7: package-armv7
 
 test: verify
 	./tests/test-repair.sh
-	./tests/test-wifi.sh
 	GOARCH=arm64 GOARM=7 ./tests/test-zip.sh
 	GOARCH=arm GOARM=7 ./tests/test-zip.sh
 

@@ -90,6 +90,8 @@ grep -Fq 'exit 0' "$tmp/install/payload/system/bin/stop_animation.sh" ||
     fail 'stop animation hook is not a stub'
 grep -Fq 'repair)' "$tmp/install/payload/system/bin/echolocal" ||
     fail 'helper lacks repair command'
+! grep -Eq 'wpa_cli|wpa_passphrase|wifi_' "$tmp/install/payload/system/bin/echolocal" ||
+    fail 'helper must not manage Wi-Fi'
 grep -qx "name=$ADDON_NAME" "$tmp/install/payload/system/etc/echolocal/.biscuit-addon" ||
     fail 'wrong add-on marker'
 grep -qx "base_ledcontroller_sha256=$BASE_LEDCONTROLLER_SHA256" \
