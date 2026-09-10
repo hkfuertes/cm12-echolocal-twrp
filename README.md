@@ -1,4 +1,4 @@
-# cm12-echolocal-twrp
+# cm-echolocal-twrp
 
 A reproducible, TWRP-flashable EchoLocal add-on for the framework-free Biscuit
 `cm12-minimal` base. Its payload lives in `/system`; it owns runtime state under `/data/misc/echolocal`.
@@ -8,8 +8,9 @@ A reproducible, TWRP-flashable EchoLocal add-on for the framework-free Biscuit
 - verifies the Biscuit device and the exact reserved generic
   `/system/bin/ledcontroller` fallback before installing;
 - preserves that fallback once as `ledcontroller.orig`;
-- replaces it with a symlink to `/system/app/echod/echod`; when a base has
-  animation hooks, preserves them as `.orig`;
+- replaces it with a symlink to `/system/app/echod/echod`; when both base
+  animation hooks exist, preserves them as `.orig`; the current minimal base
+  has neither, so it does not create dead hooks;
 - compiles `echod` from the pinned EchoLocal tag and packages it with verified
   wake-word models while using the BusyBox and TLS trust store already
   supplied by the base;
@@ -34,7 +35,10 @@ or stores Wi-Fi credentials.
 
 ## ESPHome key
 
+Root ADB is required:
+
 ```sh
+adb root
 adb shell echolocal key show
 adb shell echolocal key rotate
 ```
@@ -45,9 +49,10 @@ Home Assistant with it before pairing again.
 
 ## Build
 
-Requires Docker and git. `echod` is compiled from the pinned EchoLocal tag
-inside a toolchain image pulled by digest — never downloaded as a release
-binary:
+Requires Docker, git, make, and a GNU/Linux host with the standard tools used
+by the scripts (`file`, `sha256sum`, `stat`, `touch`, `zip`, and `unzip`).
+`echod` is compiled from the pinned EchoLocal tag inside a toolchain image
+pulled by digest — never downloaded as a release binary:
 
 ```sh
 make package          # arm64 and armv7 ZIPs
@@ -69,13 +74,16 @@ corrects ALSA layouts and
 corrects evdev `input_event` layouts. Each must clean-apply and its compile-time
 assertions require the ARM EABI sizes before packaging.
 
-Flash `out/cm12-echolocal-biscuit-0.0.6-arm64.zip` in TWRP only on the
-supported generic Biscuit base. The armv7 ZIP has been TWRP smoke-tested on
-Biscuit: `ledcontroller`, live microphone capture, and physical buttons work. It retains
-the CM12 base pin and will reject a CM14/Fire OS base until that integration
-exists. After a `/data` wipe, run `adb root`, then `adb shell echolocal repair`; obtain
-the new key with `adb shell echolocal key show` and reconfigure Wi-Fi. Test on
-hardware before relying on it.
+Flash exactly one architecture-specific ZIP in TWRP:
+`out/cm12-echolocal-biscuit-0.0.6-arm64.zip` or
+`out/cm12-echolocal-biscuit-0.0.6-armv7.zip`. Both install only on Biscuit
+where the reserved generic `/system/bin/ledcontroller` fallback matches the
+approved hash. The armv7 ZIP has been TWRP smoke-tested on Biscuit:
+`ledcontroller`, live microphone capture, and physical buttons work. It will
+reject a CM14/Fire OS base unless it presents that exact supported fallback.
+After a `/data` wipe, run `adb root`, then `adb shell echolocal repair`; obtain
+the new key with `adb shell echolocal key show` and reprovision Wi-Fi through
+the ROM. Test on hardware before relying on it.
 
 ## Credits
 
