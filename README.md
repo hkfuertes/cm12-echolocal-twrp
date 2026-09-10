@@ -62,16 +62,20 @@ make test
 Toolchain caches, source checkouts, staging trees, and ZIPs stay under
 ignored `work/` and `out/`. Pins (tag, commit, image digest, per-target binary
 and model hashes) live in [`scripts/versions.sh`](scripts/versions.sh);
-credentials never enter the repository or ZIP. The armv7 build applies separate
-tracked ALSA and evdev-input ABI patches only to an isolated `work/` copy, each
-after `git apply --check`; their compile-time assertions require the ARM EABI
-sizes before packaging.
+credentials never enter the repository or ZIP. The armv7 build applies two
+separate tracked patches only to an isolated `work/` copy:
+[`echolocal-armv7-alsa-abi.patch`](scripts/patches/echolocal-armv7-alsa-abi.patch)
+corrects ALSA layouts and
+[`echolocal-armv7-input-abi.patch`](scripts/patches/echolocal-armv7-input-abi.patch)
+corrects evdev `input_event` layouts. Each must clean-apply and its compile-time
+assertions require the ARM EABI sizes before packaging.
 
 Flash `out/cm12-echolocal-biscuit-0.0.6-arm64.zip` in TWRP only on the
 supported generic Biscuit base. Its adjacent `-arm64-uninstall.zip` restores
-the base fallback. The armv7 ZIP validates the 32-bit build, but retains the
-CM12 base pin and will reject a CM14/Fire OS base until that integration exists.
-After a `/data` wipe, run `adb root`, then `adb shell echolocal repair`; obtain
+the base fallback. The armv7 ZIP has been TWRP smoke-tested on Biscuit:
+`ledcontroller`, live microphone capture, and physical buttons work. It retains
+the CM12 base pin and will reject a CM14/Fire OS base until that integration
+exists. After a `/data` wipe, run `adb root`, then `adb shell echolocal repair`; obtain
 the new key with `adb shell echolocal key show` and reconfigure Wi-Fi. Test on
 hardware before relying on it.
 
