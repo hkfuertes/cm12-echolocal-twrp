@@ -3,8 +3,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 . "$ROOT/scripts/versions.sh"
-INSTALL_ZIP="$ROOT/out/$ADDON_NAME-$ECHOLOCAL_TAG.zip"
-UNINSTALL_ZIP="$ROOT/out/$ADDON_NAME-$ECHOLOCAL_TAG-uninstall.zip"
+INSTALL_ZIP=${1:-"$ROOT/out/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH.zip"}
+UNINSTALL_ZIP=${2:-"$ROOT/out/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH-uninstall.zip"}
 FIXTURE="$ROOT/tests/fixtures/ledcontroller"
 [ "$(sha256sum "$FIXTURE" | awk '{print $1}')" = "$BASE_LEDCONTROLLER_SHA256" ] || {
     printf '%s\n' 'generic fallback fixture hash changed' >&2

@@ -7,8 +7,8 @@ for tool in file find grep mktemp sha256sum stat unzip; do
     need "$tool"
 done
 
-install_zip=${1:-"$OUT/$ADDON_NAME-$ECHOLOCAL_TAG.zip"}
-uninstall_zip=${2:-"$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-uninstall.zip"}
+install_zip=${1:-"$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH.zip"}
+uninstall_zip=${2:-"$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-$ECHOD_ARCH-uninstall.zip"}
 [ -f "$install_zip" ] || fail "missing ZIP: $install_zip"
 [ -f "$uninstall_zip" ] || fail "missing ZIP: $uninstall_zip"
 
@@ -80,8 +80,7 @@ for relative in system/etc/echolocal/.biscuit-addon \
     system/etc/echolocal/models/hey_mycroft.json system/etc/echolocal/models/hey_mycroft.tflite; do
     mode_is "$tmp/install/payload/$relative" 644
 done
-file "$tmp/install/payload/system/app/echod/echod" |
-    grep -Eq 'ELF 64-bit.*ARM aarch64.*statically linked' || fail 'packaged echod is wrong'
+require_static "packaged echod" "$tmp/install/payload/system/app/echod/echod" "$GOARCH"
 sh -n "$tmp/install/payload/system/bin/echolocal"
 sh -n "$tmp/install/payload/system/bin/start_animation.sh"
 sh -n "$tmp/install/payload/system/bin/stop_animation.sh"

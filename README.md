@@ -61,21 +61,25 @@ inside a toolchain image pulled by digest — never downloaded as a release
 binary:
 
 ```sh
-make package
+make package          # arm64 and armv7 ZIPs
+make package-arm64    # one target only
+make package-armv7
 make verify
 make test
 ```
 
 Toolchain caches, source checkouts, staging trees, and ZIPs stay under
-ignored `work/` and `out/`. Pins (tag, commit, image digest, expected binary
+ignored `work/` and `out/`. Pins (tag, commit, image digest, per-target binary
 and model hashes) live in [`scripts/versions.sh`](scripts/versions.sh);
 credentials never enter the repository or ZIP.
 
-Flash `out/cm12-echolocal-biscuit-0.0.6.zip` in TWRP only on the supported
-generic Biscuit base. Flash the adjacent `-uninstall.zip` to restore the base
-fallback. After a `/data` wipe, run `adb root`, then `adb shell echolocal
-repair`; obtain the new key with `adb shell echolocal key show` and reconfigure
-Wi-Fi. Test on hardware before relying on it.
+Flash `out/cm12-echolocal-biscuit-0.0.6-arm64.zip` in TWRP only on the
+supported generic Biscuit base. Its adjacent `-arm64-uninstall.zip` restores
+the base fallback. The armv7 ZIP validates the 32-bit build, but retains the
+CM12 base pin and will reject a CM14/Fire OS base until that integration exists.
+After a `/data` wipe, run `adb root`, then `adb shell echolocal repair`; obtain
+the new key with `adb shell echolocal key show` and reconfigure Wi-Fi. Test on
+hardware before relying on it.
 
 ## Credits
 

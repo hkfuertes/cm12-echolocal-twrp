@@ -55,9 +55,10 @@ framework-free Biscuit `cm12-minimal` base. Keep this project independent from
 
 - `scripts/versions.sh` is the source of truth for revisions and SHA-256s.
   Build `echod` from the pinned EchoLocal tag (which must peel to the pinned
-  commit) inside the Docker toolchain image pinned by digest; verify the
-  binary against its pinned SHA-256 and as a static ELF64 AArch64 executable.
-  Model assets and any future add-on-owned runtime tool follow the same rule.
+  commit) inside the Docker toolchain image pinned by digest; verify each
+  target binary against its pinned SHA-256 and as a static ELF executable for
+  its target architecture (AArch64 or ARMv7). Model assets and any future
+  add-on-owned runtime tool follow the same rule.
 - Do not commit downloads, generated models, staging trees, or ZIPs. They
   belong under ignored `work/` and `out/`.
 - Keep the implementation small: POSIX shell, existing host tools, and no new

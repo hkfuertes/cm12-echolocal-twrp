@@ -13,16 +13,20 @@ ECHOLOCAL_COMMIT=9dc8b663ed80248a3642d896b8982783adbd4867
 # echod is compiled from the tagged source inside this pinned toolchain image
 # (digest obtained via: docker pull golang:1.26.6 &&
 #  docker inspect --format '{{index .RepoDigests 0}}' golang:1.26.6).
-# Changing GOARCH also requires pinning a new ECHOD_SHA256; GOARM only applies
-# when GOARCH=arm and is ignored otherwise.
 GO_IMAGE=golang:1.26.6@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6
 GOOS=linux
-GOARCH=arm64
-GOARM=7
+GOARCH=${GOARCH:-arm64}
+GOARM=${GOARM:-7}
 
-# Expected SHA-256 of our deterministic build (tag + image + flags above).
-# A mismatch means toolchain or recipe drift; re-pin it deliberately.
-ECHOD_SHA256=b1609fd114218adf6a79fb6a396855c9a90715ea977c9c01ef0b19e353a2c457
+# Expected SHA-256s of deterministic builds (tag + image + flags above).
+# A mismatch means toolchain or recipe drift; re-pin the affected target.
+ECHOD_ARM64_SHA256=b1609fd114218adf6a79fb6a396855c9a90715ea977c9c01ef0b19e353a2c457
+ECHOD_ARMV7_SHA256=6f9373c322e9457fd28959b9ab56c90fe42a1b74ba0bc8554a0d97a598e35978
+case "$GOARCH:$GOARM" in
+    arm64:*) ECHOD_ARCH=arm64; ECHOD_SHA256=$ECHOD_ARM64_SHA256 ;;
+    arm:7)   ECHOD_ARCH=armv7; ECHOD_SHA256=$ECHOD_ARMV7_SHA256 ;;
+    *) printf '%s\n' "unsupported echod target: GOARCH=$GOARCH GOARM=$GOARM" >&2; exit 1 ;;
+esac
 
 ECHOLOCAL_REPOSITORY=https://github.com/ygelfand/echolocal.git
 ECHOLOCAL_MODELS='
