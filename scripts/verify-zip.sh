@@ -7,8 +7,8 @@ for tool in file find grep mktemp sha256sum stat unzip; do
     need "$tool"
 done
 
-install_zip=${1:-"$OUT/$ADDON_NAME-$ECHOLOCAL_VERSION.zip"}
-uninstall_zip=${2:-"$OUT/$ADDON_NAME-$ECHOLOCAL_VERSION-uninstall.zip"}
+install_zip=${1:-"$OUT/$ADDON_NAME-$ECHOLOCAL_TAG.zip"}
+uninstall_zip=${2:-"$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-uninstall.zip"}
 [ -f "$install_zip" ] || fail "missing ZIP: $install_zip"
 [ -f "$uninstall_zip" ] || fail "missing ZIP: $uninstall_zip"
 

@@ -10,8 +10,9 @@ A reproducible, TWRP-flashable EchoLocal add-on for the framework-free Biscuit
 - preserves that fallback once as `ledcontroller.orig`;
 - replaces it with a symlink to `/system/app/echod/echod`; when a base has
   animation hooks, preserves them as `.orig` and restores them on uninstall;
-- packages verified `echod` and wake-word models while using the BusyBox and
-  TLS trust store already supplied by the base;
+- compiles `echod` from the pinned EchoLocal tag and packages it with verified
+  wake-word models while using the BusyBox and TLS trust store already
+  supplied by the base;
 - initializes a missing ESPHome key and missing wake-word models on first install,
   without overwriting existing runtime state; and
 - provides `echolocal repair` to recreate missing state after a `/data` wipe,
@@ -55,16 +56,20 @@ Home Assistant with it before pairing again.
 
 ## Build
 
+Requires Docker and git. `echod` is compiled from the pinned EchoLocal tag
+inside a toolchain image pulled by digest — never downloaded as a release
+binary:
+
 ```sh
 make package
 make verify
 make test
 ```
 
-Generated downloads, source checkouts, staging trees, and ZIPs stay under
-ignored `work/` and `out/`. Inputs and their hashes live in
-[`scripts/versions.sh`](scripts/versions.sh); credentials never enter the
-repository or ZIP.
+Toolchain caches, source checkouts, staging trees, and ZIPs stay under
+ignored `work/` and `out/`. Pins (tag, commit, image digest, expected binary
+and model hashes) live in [`scripts/versions.sh`](scripts/versions.sh);
+credentials never enter the repository or ZIP.
 
 Flash `out/cm12-echolocal-biscuit-0.0.6.zip` in TWRP only on the supported
 generic Biscuit base. Flash the adjacent `-uninstall.zip` to restore the base

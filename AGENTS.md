@@ -54,8 +54,10 @@ framework-free Biscuit `cm12-minimal` base. Keep this project independent from
 ## Pinned inputs and repository hygiene
 
 - `scripts/versions.sh` is the source of truth for revisions and SHA-256s.
-  Verify every download before packaging: static AArch64 `echod`, model assets,
-  and any future add-on-owned runtime tool.
+  Build `echod` from the pinned EchoLocal tag (which must peel to the pinned
+  commit) inside the Docker toolchain image pinned by digest; verify the
+  binary against its pinned SHA-256 and as a static ELF64 AArch64 executable.
+  Model assets and any future add-on-owned runtime tool follow the same rule.
 - Do not commit downloads, generated models, staging trees, or ZIPs. They
   belong under ignored `work/` and `out/`.
 - Keep the implementation small: POSIX shell, existing host tools, and no new

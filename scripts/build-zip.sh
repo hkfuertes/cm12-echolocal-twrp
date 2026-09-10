@@ -29,7 +29,7 @@ cp "$ROOT/payload/system/bin/start_animation.sh" "$stage/payload/system/bin/star
 cp "$ROOT/payload/system/bin/stop_animation.sh" "$stage/payload/system/bin/stop_animation.sh"
 cp "$INPUTS/echod" "$stage/payload/system/app/echod/echod"
 printf 'name=%s\nversion=%s\nbase_ledcontroller_sha256=%s\n' \
-    "$ADDON_NAME" "$ECHOLOCAL_VERSION" "$BASE_LEDCONTROLLER_SHA256" \
+    "$ADDON_NAME" "$ECHOLOCAL_TAG" "$BASE_LEDCONTROLLER_SHA256" \
     > "$stage/payload/system/etc/echolocal/.biscuit-addon"
 printf '%s\n' "$ECHOLOCAL_MODELS" |
 while read -r name expected source; do
@@ -55,7 +55,7 @@ for path in $(LC_ALL=C find "$stage/payload" -type f -print | LC_ALL=C sort); do
 done
 
 sed -e "s/@ADDON_NAME@/$ADDON_NAME/g" \
-    -e "s/@VERSION@/$ECHOLOCAL_VERSION/g" \
+    -e "s/@VERSION@/$ECHOLOCAL_TAG/g" \
     -e "s/@BASE_LEDCONTROLLER_SHA256@/$BASE_LEDCONTROLLER_SHA256/g" \
     -e "s/@MANIFEST_SHA256@/$manifest_sha/g" \
     -e "s/@PAYLOAD_BYTES@/$payload_bytes/g" \
@@ -75,8 +75,8 @@ chmod 0755 "$stage/META-INF/com/google/android/update-binary" \
 find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
 find "$uninstall_stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
 mkdir -p "$OUT"
-install_zip="$OUT/$ADDON_NAME-$ECHOLOCAL_VERSION.zip"
-uninstall_zip="$OUT/$ADDON_NAME-$ECHOLOCAL_VERSION-uninstall.zip"
+install_zip="$OUT/$ADDON_NAME-$ECHOLOCAL_TAG.zip"
+uninstall_zip="$OUT/$ADDON_NAME-$ECHOLOCAL_TAG-uninstall.zip"
 rm -f "$install_zip" "$install_zip.sha256" "$uninstall_zip" "$uninstall_zip.sha256"
 (
     cd "$stage"

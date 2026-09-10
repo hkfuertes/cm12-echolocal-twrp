@@ -32,20 +32,6 @@ require_hash() {
     [ "$got" = "$2" ] || fail "SHA-256 mismatch: $1"
 }
 
-fetch() {
-    url=$1
-    destination=$2
-    expected=$3
-    mkdir -p "$(dirname "$destination")"
-    if ! has_hash "$destination" "$expected"; then
-        rm -f "$destination" "$destination.part"
-        curl --fail --location --retry 3 --retry-delay 1 --silent --show-error \
-            -o "$destination.part" "$url"
-        mv "$destination.part" "$destination"
-    fi
-    require_hash "$destination" "$expected"
-}
-
 require_static_aarch64() {
     description=$1
     path=$2

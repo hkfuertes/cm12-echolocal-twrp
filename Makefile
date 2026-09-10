@@ -2,6 +2,7 @@
 
 prepare:
 	./scripts/fetch-inputs.sh
+	./scripts/build-echod.sh
 
 package: prepare
 	./scripts/build-zip.sh
