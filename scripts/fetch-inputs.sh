@@ -3,16 +3,11 @@ set -eu
 
 . "$(dirname "$0")/common.sh"
 
-for tool in curl file git sha256sum; do
+for tool in file git sha256sum; do
     need "$tool"
 done
 
-mkdir -p "$INPUTS/downloads" "$INPUTS/models" "$SOURCES"
-
-echod="$INPUTS/echod"
-fetch "$ECHOD_URL" "$echod" "$ECHOD_SHA256"
-require_static_aarch64 "echod" "$echod"
-chmod 0755 "$echod"
+mkdir -p "$INPUTS/models" "$SOURCES"
 
 model_source="$SOURCES/echolocal"
 if [ ! -d "$model_source/.git" ]; then
@@ -22,7 +17,11 @@ if [ ! -d "$model_source/.git" ]; then
 else
     git -C "$model_source" remote set-url origin "$ECHOLOCAL_REPOSITORY"
 fi
-GIT_TERMINAL_PROMPT=0 git -C "$model_source" fetch -q --depth=1 origin "$ECHOLOCAL_COMMIT"
+GIT_TERMINAL_PROMPT=0 git -C "$model_source" fetch -q --depth=1 origin \
+    "refs/tags/$ECHOLOCAL_TAG:refs/tags/$ECHOLOCAL_TAG"
+peeled=$(git -C "$model_source" rev-parse "$ECHOLOCAL_TAG^{}")
+[ "$peeled" = "$ECHOLOCAL_COMMIT" ] ||
+    fail "tag $ECHOLOCAL_TAG does not peel to $ECHOLOCAL_COMMIT (got $peeled)"
 git -C "$model_source" checkout -q --detach --force "$ECHOLOCAL_COMMIT"
 [ "$(git -C "$model_source" rev-parse HEAD)" = "$ECHOLOCAL_COMMIT" ] ||
     fail "EchoLocal source did not resolve to $ECHOLOCAL_COMMIT"
@@ -38,5 +37,4 @@ while read -r name expected source; do
     require_hash "$target" "$expected"
 done
 
-
-printf '%s\n' "prepared pinned EchoLocal inputs in $INPUTS"
+printf '%s\n' "prepared EchoLocal $ECHOLOCAL_TAG source and pinned inputs in $INPUTS"

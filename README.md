@@ -10,12 +10,12 @@ A reproducible, TWRP-flashable EchoLocal add-on for the framework-free Biscuit
 - preserves that fallback once as `ledcontroller.orig`;
 - replaces it with a symlink to `/system/app/echod/echod`; when a base has
   animation hooks, preserves them as `.orig` and restores them on uninstall;
-- packages verified `echod` and wake-word models while using the BusyBox and
-  TLS trust store already supplied by the base;
+- compiles `echod` from the pinned EchoLocal tag and packages it with verified
+  wake-word models while using the BusyBox and TLS trust store already
+  supplied by the base;
 - initializes a missing ESPHome key and missing wake-word models on first install,
   without overwriting existing runtime state; and
-- provides `echolocal repair` to recreate missing state after a `/data` wipe,
-  without restoring Wi-Fi credentials; and
+- provides `echolocal repair` to recreate missing state after a `/data` wipe; and
 - builds a matching uninstaller that restores the generic fallback and leaves
   `/data/misc/echolocal` intact.
 
@@ -26,21 +26,13 @@ ZIP afterwards.
 ## Base requirements
 
 - `/system/xbin/busybox` must be a regular executable supplied by `cm12-minimal`.
-- `/system/bin/wpa_passphrase` must be supplied by CM12 to provision protected Wi-Fi.
 - CM12 owns the TLS trust roots. This ZIP never packages, overwrites, or
   removes certificates.
 
-## Wi-Fi
+## Network provisioning
 
-```sh
-adb shell echolocal wifi connect '<ssid>' '<passphrase>'
-adb shell echolocal wifi open '<ssid>'
-adb shell echolocal wifi status
-```
-
-`wifi connect` takes an 8–63 character WPA passphrase and derives the raw
-WPA key with the base `wpa_passphrase`; a 64-character hexadecimal key is also
-accepted directly. The ZIP never contains Wi-Fi credentials.
+The ROM owns Wi-Fi provisioning through `wpa_connect`; EchoLocal never writes
+or stores Wi-Fi credentials.
 
 ## ESPHome key
 
@@ -55,22 +47,37 @@ Home Assistant with it before pairing again.
 
 ## Build
 
+Requires Docker and git. `echod` is compiled from the pinned EchoLocal tag
+inside a toolchain image pulled by digest — never downloaded as a release
+binary:
+
 ```sh
-make package
+make package          # arm64 and armv7 ZIPs
+make package-arm64    # one target only
+make package-armv7
 make verify
 make test
 ```
 
-Generated downloads, source checkouts, staging trees, and ZIPs stay under
-ignored `work/` and `out/`. Inputs and their hashes live in
-[`scripts/versions.sh`](scripts/versions.sh); credentials never enter the
-repository or ZIP.
+Toolchain caches, source checkouts, staging trees, and ZIPs stay under
+ignored `work/` and `out/`. Pins (tag, commit, image digest, per-target binary
+and model hashes) live in [`scripts/versions.sh`](scripts/versions.sh);
+credentials never enter the repository or ZIP. The armv7 build applies two
+separate tracked patches only to an isolated `work/` copy:
+[`echolocal-armv7-alsa-abi.patch`](scripts/patches/echolocal-armv7-alsa-abi.patch)
+corrects ALSA layouts and
+[`echolocal-armv7-input-abi.patch`](scripts/patches/echolocal-armv7-input-abi.patch)
+corrects evdev `input_event` layouts. Each must clean-apply and its compile-time
+assertions require the ARM EABI sizes before packaging.
 
-Flash `out/cm12-echolocal-biscuit-0.0.6.zip` in TWRP only on the supported
-generic Biscuit base. Flash the adjacent `-uninstall.zip` to restore the base
-fallback. After a `/data` wipe, run `adb root`, then `adb shell echolocal
-repair`; obtain the new key with `adb shell echolocal key show` and reconfigure
-Wi-Fi. Test on hardware before relying on it.
+Flash `out/cm12-echolocal-biscuit-0.0.6-arm64.zip` in TWRP only on the
+supported generic Biscuit base. Its adjacent `-arm64-uninstall.zip` restores
+the base fallback. The armv7 ZIP has been TWRP smoke-tested on Biscuit:
+`ledcontroller`, live microphone capture, and physical buttons work. It retains
+the CM12 base pin and will reject a CM14/Fire OS base until that integration
+exists. After a `/data` wipe, run `adb root`, then `adb shell echolocal repair`; obtain
+the new key with `adb shell echolocal key show` and reconfigure Wi-Fi. Test on
+hardware before relying on it.
 
 ## Credits
 

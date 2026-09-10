@@ -30,9 +30,8 @@ framework-free Biscuit `cm12-minimal` base. Keep this project independent from
 - The installer initializes a missing ESPHome key and missing seed models on
   first install without overwriting runtime state. A `/data` wipe is repaired
   manually with `echolocal repair`: it ensures the key, copies absent models,
-  and restarts `ledcontroller`. It does not restore Wi-Fi credentials; provision
-  a protected network with `echolocal wifi connect <ssid> <passphrase>`
-  (requiring base `/system/bin/wpa_passphrase`) or use `echolocal wifi open <ssid>`.
+  and restarts `ledcontroller`. The ROM owns Wi-Fi provisioning and credentials
+  through `wpa_connect`; EchoLocal never writes them.
 - Keep EchoLocal's compatibility paths and the `ledcontroller` init-service
   lifecycle. Do not copy Fire OS boot flashing, package hiding, firewall hooks,
   or Wi-Fi provisioning behavior.
@@ -54,8 +53,14 @@ framework-free Biscuit `cm12-minimal` base. Keep this project independent from
 ## Pinned inputs and repository hygiene
 
 - `scripts/versions.sh` is the source of truth for revisions and SHA-256s.
-  Verify every download before packaging: static AArch64 `echod`, model assets,
-  and any future add-on-owned runtime tool.
+  Build `echod` from the pinned EchoLocal tag (which must peel to the pinned
+  commit) inside the Docker toolchain image pinned by digest; verify each
+  target binary against its pinned SHA-256 and as a static ELF executable for
+  its target architecture (AArch64 or ARMv7). The ARMv7 build applies its
+  tracked ALSA and evdev-input ABI patches only to an isolated work copy, each
+  after a clean-apply preflight; ARM64 always builds the unpatched tag. Model
+  assets and any future
+  add-on-owned runtime tool follow the same rule.
 - Do not commit downloads, generated models, staging trees, or ZIPs. They
   belong under ignored `work/` and `out/`.
 - Keep the implementation small: POSIX shell, existing host tools, and no new

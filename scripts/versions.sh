@@ -1,15 +1,34 @@
 # Pinned, independently verifiable build inputs.
 ADDON_NAME=cm12-echolocal-biscuit
-ECHOLOCAL_VERSION=0.0.6
 SOURCE_DATE_EPOCH=1700000000
 
 BASE_LEDCONTROLLER_SHA256=f7a2f96673fae0cb00836362f30d54ec15140829217c7c75b72b707af67ef0fc
 
-ECHOD_URL=https://github.com/ygelfand/echolocal/releases/download/0.0.6/echod
-ECHOD_SHA256=155a9d1330879de6f889a3990f2e82d1ecf5ddf97c7e6d1b4d85babe6f192181
+# EchoLocal release tag and the commit it peels to: the single source both the
+# binary and the models are built from. fetch-inputs.sh fails closed if the
+# tag no longer resolves to this commit.
+ECHOLOCAL_TAG=0.0.6
+ECHOLOCAL_COMMIT=9dc8b663ed80248a3642d896b8982783adbd4867
+
+# echod is compiled from the tagged source inside this pinned toolchain image
+# (digest obtained via: docker pull golang:1.26.6 &&
+#  docker inspect --format '{{index .RepoDigests 0}}' golang:1.26.6).
+GO_IMAGE=golang:1.26.6@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6
+GOOS=linux
+GOARCH=${GOARCH:-arm64}
+GOARM=${GOARM:-7}
+
+# Expected SHA-256s of deterministic builds (tag + image + flags above).
+# A mismatch means toolchain or recipe drift; re-pin the affected target.
+ECHOD_ARM64_SHA256=b1609fd114218adf6a79fb6a396855c9a90715ea977c9c01ef0b19e353a2c457
+ECHOD_ARMV7_SHA256=46af989b2e56692af0322622c10ef12063f07ef9f750a35fe05b93a4d0cdbc44
+case "$GOARCH:$GOARM" in
+    arm64:*) ECHOD_ARCH=arm64; ECHOD_SHA256=$ECHOD_ARM64_SHA256 ;;
+    arm:7)   ECHOD_ARCH=armv7; ECHOD_SHA256=$ECHOD_ARMV7_SHA256 ;;
+    *) printf '%s\n' "unsupported echod target: GOARCH=$GOARCH GOARM=$GOARM" >&2; exit 1 ;;
+esac
 
 ECHOLOCAL_REPOSITORY=https://github.com/ygelfand/echolocal.git
-ECHOLOCAL_COMMIT=567d9440f48509457cf1c7131745e385fabf83c1
 ECHOLOCAL_MODELS='
 okay_nabu.json 6dd65604f70fe5ea9d1af73a7bf239529d1fbabc363807f45d2b22ce464ddbed internal/host/assets/models/okay_nabu.json
 okay_nabu.tflite 0689abe1912a95a3318a0d8cb2e67bad0cbcfe3e24dd6e050c75debddfb6f891 internal/host/assets/models/okay_nabu.tflite
