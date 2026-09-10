@@ -56,7 +56,9 @@ framework-free Biscuit `cm12-minimal` base. Keep this project independent from
   Build `echod` from the pinned EchoLocal tag (which must peel to the pinned
   commit) inside the Docker toolchain image pinned by digest; verify each
   target binary against its pinned SHA-256 and as a static ELF executable for
-  its target architecture (AArch64 or ARMv7). Model assets and any future
+  its target architecture (AArch64 or ARMv7). The ARMv7 build applies its
+  tracked ALSA ABI patch only to an isolated work copy after a clean-apply
+  preflight; ARM64 always builds the unpatched tag. Model assets and any future
   add-on-owned runtime tool follow the same rule.
 - Do not commit downloads, generated models, staging trees, or ZIPs. They
   belong under ignored `work/` and `out/`.

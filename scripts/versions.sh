@@ -21,7 +21,7 @@ GOARM=${GOARM:-7}
 # Expected SHA-256s of deterministic builds (tag + image + flags above).
 # A mismatch means toolchain or recipe drift; re-pin the affected target.
 ECHOD_ARM64_SHA256=b1609fd114218adf6a79fb6a396855c9a90715ea977c9c01ef0b19e353a2c457
-ECHOD_ARMV7_SHA256=6f9373c322e9457fd28959b9ab56c90fe42a1b74ba0bc8554a0d97a598e35978
+ECHOD_ARMV7_SHA256=9f4500b6573868d46d4d0642889b1cab3843db8ccbb2bc3e29509eac28ae872f
 case "$GOARCH:$GOARM" in
     arm64:*) ECHOD_ARCH=arm64; ECHOD_SHA256=$ECHOD_ARM64_SHA256 ;;
     arm:7)   ECHOD_ARCH=armv7; ECHOD_SHA256=$ECHOD_ARMV7_SHA256 ;;
