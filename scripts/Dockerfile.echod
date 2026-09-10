@@ -10,12 +10,14 @@ FROM ${GO_IMAGE} AS build
 
 ARG GOOS=linux
 ARG GOARCH=arm64
+ARG GOARM=7
 ARG VERSION
 ARG COMMIT
 ARG BUILD_DATE
 
 ENV CGO_ENABLED=0 \
-    GOTOOLCHAIN=local
+    GOTOOLCHAIN=local \
+    GOARM=${GOARM}
 
 WORKDIR /src
 # Module layer keyed on go.mod/go.sum alone, so source changes do not re-download.

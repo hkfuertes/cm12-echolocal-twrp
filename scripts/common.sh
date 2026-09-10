@@ -32,9 +32,13 @@ require_hash() {
     [ "$got" = "$2" ] || fail "SHA-256 mismatch: $1"
 }
 
-require_static_aarch64() {
+require_static() {
     description=$1
     path=$2
-    file "$path" | grep -Eq 'ELF 64-bit.*ARM aarch64.*statically linked' ||
-        fail "$description is not a static ELF64 AArch64 executable"
+    goarch=$3
+    case $goarch in
+        arm64) file "$path" | grep -Eq 'ELF 64-bit.*ARM aarch64.*statically linked' ;;
+        arm)   file "$path" | grep -Eq 'ELF 32-bit.*ARM, EABI5.*statically linked' ;;
+        *)     printf '%s\n' "unsupported GOARCH: $goarch" >&2; return 1 ;;
+    esac || fail "$description is not a static ELF $goarch executable"
 }

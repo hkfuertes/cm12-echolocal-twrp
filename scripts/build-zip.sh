@@ -8,7 +8,7 @@ for tool in cp find sed sha256sum sort touch tr wc xargs zip; do
 done
 
 require_hash "$INPUTS/echod" "$ECHOD_SHA256"
-require_static_aarch64 "echod" "$INPUTS/echod"
+require_static "echod" "$INPUTS/echod" "$GOARCH"
 printf '%s\n' "$ECHOLOCAL_MODELS" |
 while read -r name expected source; do
     [ -n "$name" ] || continue

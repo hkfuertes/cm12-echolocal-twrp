@@ -22,6 +22,7 @@ docker build --quiet \
     --build-arg GO_IMAGE="$GO_IMAGE" \
     --build-arg GOOS="$GOOS" \
     --build-arg GOARCH="$GOARCH" \
+    --build-arg GOARM="$GOARM" \
     --build-arg UID="$(id -u)" \
     --build-arg VERSION="$ECHOLOCAL_TAG" \
     --build-arg COMMIT="$commit_short" \
@@ -30,6 +31,6 @@ docker build --quiet \
     --output "type=local,dest=$INPUTS" \
     "$source_tree"
 
-require_static_aarch64 "echod" "$INPUTS/echod"
+require_static "echod" "$INPUTS/echod" "$GOARCH"
 require_hash "$INPUTS/echod" "$ECHOD_SHA256"
 printf '%s\n' "built $INPUTS/echod from $ECHOLOCAL_TAG ($ECHOLOCAL_COMMIT)"
