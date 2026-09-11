@@ -26,13 +26,14 @@ if [ "$ECHOD_ARCH" = armv7 ]; then
 
     for patch in \
         "$ROOT/scripts/patches/echolocal-armv7-alsa-abi.patch" \
-        "$ROOT/scripts/patches/echolocal-armv7-input-abi.patch"
+        "$ROOT/scripts/patches/echolocal-armv7-input-abi.patch" \
+        "$ROOT/scripts/patches/echolocal-armv7-disable-self-update.patch"
     do
         [ -f "$patch" ] || fail "missing ARMv7 ABI patch: $patch"
         git -C "$build_tree" apply --check --unidiff-zero "$patch" ||
             fail "ARMv7 ABI patch does not apply to $ECHOLOCAL_COMMIT: ${patch##*/}"
         git -C "$build_tree" apply --unidiff-zero "$patch"
-        printf '%s\n' "preflight: ARMv7 ABI patch applies: ${patch##*/}"
+        printf '%s\n' "preflight: ARMv7 patch applies: ${patch##*/}"
     done
 fi
 

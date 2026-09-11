@@ -66,13 +66,15 @@ Toolchain caches, source checkouts, staging trees, and ZIPs stay under
 ignored `work/` and `out/`. Pins (tag, commit, image digest, per-target binary
 and model hashes) live in [`scripts/versions.sh`](scripts/versions.sh). The
 installer marker and ZIP names use the pinned upstream tag. Credentials never enter
-the repository or ZIP. The armv7 build applies two
-separate tracked patches only to an isolated `work/` copy:
+the repository or ZIP. The armv7 build applies three separate tracked patches only
+to an isolated `work/` copy:
 [`echolocal-armv7-alsa-abi.patch`](scripts/patches/echolocal-armv7-alsa-abi.patch)
-corrects ALSA layouts and
+corrects ALSA layouts,
 [`echolocal-armv7-input-abi.patch`](scripts/patches/echolocal-armv7-input-abi.patch)
-corrects evdev `input_event` layouts. Each must clean-apply and its compile-time
-assertions require the ARM EABI sizes before packaging.
+corrects evdev `input_event` layouts, and
+[`echolocal-armv7-disable-self-update.patch`](scripts/patches/echolocal-armv7-disable-self-update.patch)
+blocks the architecture-neutral upstream self-update. Each must clean-apply;
+the ABI patches' compile-time assertions require the ARM EABI sizes before packaging.
 
 Flash exactly one architecture-specific ZIP in TWRP:
 `out/cm12-echolocal-biscuit-0.0.6-arm64.zip` or
