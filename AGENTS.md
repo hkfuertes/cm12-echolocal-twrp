@@ -86,7 +86,7 @@ wipe. Use `adb devices -l` plus short explicit checks, not `adb wait-for-device`
 
 ## References
 
-- Generic base reference: `../amazon_device_biscuit/device/amazon/biscuit/`
-- Existing EchoLocal source/installer: `../echolocal/` (reference only)
+- Generic base reference: <https://github.com/hkfuertes/amazon_device_biscuit>
+- Existing EchoLocal source/installer: <https://github.com/ygelfand/echolocal> (reference only)
 - Base PR: <https://github.com/hkfuertes/amazon_device_biscuit/pull/6>
 - Integration reference: <https://github.com/hkfuertes/amazon_device_biscuit/pull/4>
